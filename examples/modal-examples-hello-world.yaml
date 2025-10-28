@@ -7,7 +7,7 @@ metadata:
     type: function
 spec:
   appName: modal-hello-world
-  description: "Hello world Modal function using public repository"
+  description: 'Hello world Modal function using public repository'
   source:
     # Using Modal's official examples repository
     git:
@@ -15,12 +15,12 @@ spec:
       branch: 'main'
       path: '01_getting_started/hello_world.py'
   environment:
-    name: "main"
+    name: 'main'
     variables:
-      LOG_LEVEL: "INFO"
+      LOG_LEVEL: 'INFO'
   compute:
-    cpu: "0.25"
-    memory: "512Mi"
+    cpu: '0.25'
+    memory: '512Mi'
     timeout: 60
   scaling:
     minInstances: 0
@@ -28,7 +28,7 @@ spec:
     concurrency: 1
     idleTimeout: 300
   deployment:
-    strategy: "rolling"
+    strategy: 'rolling'
     healthCheck:
       enabled: true
       timeout: 30

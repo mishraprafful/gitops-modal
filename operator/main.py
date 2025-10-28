@@ -24,6 +24,7 @@ try:
         # Modal client is initialized automatically when imported
         # We just need to ensure credentials are available
         import modal
+
         logger.info("Modal client initialized successfully")
         modal_client = None  # Will be initialized per-operation
     else:

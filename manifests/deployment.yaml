@@ -89,9 +89,9 @@ spec:
               memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false  # Modal CLI needs to write config files
+            readOnlyRootFilesystem: false # Modal CLI needs to write config files
             runAsNonRoot: true
-            runAsUser: 1000  # operator user ID
+            runAsUser: 1000 # operator user ID
             runAsGroup: 1000
             capabilities:
               drop:

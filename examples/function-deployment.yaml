@@ -14,7 +14,7 @@ spec:
     #   repository: 'https://github.com/modal-labs/modal-examples'
     #   branch: 'main'
     #   path: 'hello_world.py'
-    
+
     # Option 2: Use container image (recommended for testing)
     image:
       name: 'python'
