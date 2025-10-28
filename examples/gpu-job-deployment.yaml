@@ -1,0 +1,41 @@
+apiVersion: modal.io/v1
+kind: ModalDeployment
+metadata:
+  name: ml-training-job
+  namespace: ml-workloads
+  labels:
+    app: ml-training
+    type: gpu-job
+spec:
+  appName: ml-training-job
+  description: 'Machine learning training job with GPU support'
+  source:
+    image:
+      name: 'your-registry/ml-training'
+      tag: 'v1.2.0'
+      pullSecret: 'registry-credentials'
+  environment:
+    name: 'main'
+    variables:
+      MODEL_TYPE: 'transformer'
+      BATCH_SIZE: '32'
+      EPOCHS: '10'
+    secrets:
+      - name: 'wandb-api-key'
+        secretRef:
+          name: 'ml-secrets'
+          namespace: 'ml-workloads'
+  compute:
+    cpu: '4'
+    memory: '16Gi'
+    gpu: 'A100'
+    gpuCount: 2
+    timeout: 7200 # 2 hours
+  scaling:
+    minInstances: 0
+    maxInstances: 1
+    concurrency: 1
+  deployment:
+    strategy: 'replace'
+    healthCheck:
+      enabled: false

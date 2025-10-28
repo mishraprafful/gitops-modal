@@ -1,0 +1,35 @@
+apiVersion: modal.io/v1
+kind: ModalDeployment
+metadata:
+  name: hello-world-function
+  namespace: default
+  labels:
+    app: hello-world
+    type: function
+spec:
+  appName: hello-world-function
+  description: 'A simple hello world Modal function'
+  source:
+    git:
+      repository: 'https://github.com/your-org/modal-apps'
+      branch: 'main'
+      path: 'functions/hello_world.py'
+  environment:
+    name: 'main'
+    variables:
+      LOG_LEVEL: 'INFO'
+      GREETING: 'Hello from GitOps!'
+  compute:
+    cpu: '0.25'
+    memory: '512Mi'
+    timeout: 60
+  scaling:
+    minInstances: 0
+    maxInstances: 10
+    concurrency: 1
+    idleTimeout: 300
+  deployment:
+    strategy: 'rolling'
+    healthCheck:
+      enabled: true
+      timeout: 30

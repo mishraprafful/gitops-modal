@@ -1,0 +1,50 @@
+apiVersion: modal.io/v1
+kind: ModalDeployment
+metadata:
+  name: streaming-api
+  namespace: production
+  labels:
+    app: streaming-api
+    type: high-throughput
+spec:
+  appName: streaming-api
+  description: 'High-throughput streaming API with auto-scaling'
+  source:
+    git:
+      repository: 'https://github.com/your-org/streaming-services'
+      branch: 'main'
+      path: 'api/streaming_service.py'
+  environment:
+    name: 'prod'
+    variables:
+      QUEUE_SIZE: '10000'
+      WORKER_THREADS: '8'
+      CACHE_TTL: '300'
+    secrets:
+      - name: 'kafka-credentials'
+        secretRef:
+          name: 'kafka-secret'
+          namespace: 'production'
+      - name: 'monitoring-keys'
+        secretRef:
+          name: 'monitoring-secret'
+          namespace: 'production'
+  compute:
+    cpu: '2'
+    memory: '8Gi'
+    timeout: 600
+  scaling:
+    minInstances: 5 # Always keep 5 instances warm
+    maxInstances: 100 # Scale up to 100 during peak
+    concurrency: 50 # Handle 50 concurrent requests per instance
+    idleTimeout: 120 # Quick scale down for cost efficiency
+  webhooks:
+    enabled: true
+    path: '/stream'
+    methods: ['POST', 'GET']
+  deployment:
+    strategy: 'rolling'
+    healthCheck:
+      enabled: true
+      path: '/health'
+      timeout: 10

@@ -1,0 +1,290 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: modaldeployments.modal.io
+  labels:
+    app: modal-operator
+spec:
+  group: modal.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - appName
+                - source
+              properties:
+                appName:
+                  type: string
+                  description: 'Name of the Modal application'
+                  pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                description:
+                  type: string
+                  description: 'Description of the Modal application'
+                source:
+                  type: object
+                  description: 'Source configuration for the Modal app'
+                  oneOf:
+                    - required: ['git']
+                    - required: ['image']
+                  properties:
+                    git:
+                      type: object
+                      required:
+                        - repository
+                        - path
+                      properties:
+                        repository:
+                          type: string
+                          description: 'Git repository URL'
+                        branch:
+                          type: string
+                          description: 'Git branch (default: main)'
+                          default: 'main'
+                        path:
+                          type: string
+                          description: 'Path to the Modal app file within the repository'
+                        revision:
+                          type: string
+                          description: 'Git commit SHA or tag'
+                    image:
+                      type: object
+                      required:
+                        - name
+                      properties:
+                        name:
+                          type: string
+                          description: 'Container image name'
+                        tag:
+                          type: string
+                          description: 'Image tag'
+                          default: 'latest'
+                        pullSecret:
+                          type: string
+                          description: 'Kubernetes secret for pulling private images'
+                environment:
+                  type: object
+                  description: 'Environment configuration'
+                  properties:
+                    name:
+                      type: string
+                      description: 'Modal environment name'
+                      enum: ['main', 'dev', 'staging', 'prod']
+                      default: 'main'
+                    variables:
+                      type: object
+                      description: 'Environment variables'
+                      additionalProperties:
+                        type: string
+                    secrets:
+                      type: array
+                      description: 'List of secrets to inject'
+                      items:
+                        type: object
+                        required:
+                          - name
+                        properties:
+                          name:
+                            type: string
+                            description: 'Name of the Modal secret'
+                          key:
+                            type: string
+                            description: 'Kubernetes secret key'
+                          secretRef:
+                            type: object
+                            description: 'Reference to Kubernetes secret'
+                            required:
+                              - name
+                            properties:
+                              name:
+                                type: string
+                                description: 'Name of Kubernetes secret'
+                              namespace:
+                                type: string
+                                description: 'Namespace of the secret'
+                compute:
+                  type: object
+                  description: 'Compute resource configuration'
+                  properties:
+                    cpu:
+                      type: string
+                      description: "CPU allocation (e.g., '1', '0.25', '4')"
+                      pattern: "^[0-9]*\\.?[0-9]+$"
+                    memory:
+                      type: string
+                      description: "Memory allocation (e.g., '512Mi', '2Gi')"
+                      pattern: '^[0-9]+(Mi|Gi|Ti)$'
+                    gpu:
+                      type: string
+                      description: "GPU type (e.g., 'T4', 'A10G', 'A100')"
+                      enum: ['T4', 'A10G', 'A100', 'H100']
+                    gpuCount:
+                      type: integer
+                      description: 'Number of GPUs'
+                      minimum: 1
+                      maximum: 8
+                    timeout:
+                      type: integer
+                      description: 'Function timeout in seconds'
+                      minimum: 1
+                      maximum: 86400
+                scaling:
+                  type: object
+                  description: 'Scaling configuration'
+                  properties:
+                    minInstances:
+                      type: integer
+                      description: 'Minimum number of instances'
+                      minimum: 0
+                      default: 0
+                    maxInstances:
+                      type: integer
+                      description: 'Maximum number of instances'
+                      minimum: 1
+                      maximum: 1000
+                    concurrency:
+                      type: integer
+                      description: 'Max concurrent requests per instance'
+                      minimum: 1
+                      default: 1
+                    idleTimeout:
+                      type: integer
+                      description: 'Idle timeout in seconds before scale down'
+                      minimum: 0
+                      default: 300
+                schedule:
+                  type: object
+                  description: 'Cron schedule for scheduled functions'
+                  properties:
+                    cron:
+                      type: string
+                      description: "Cron expression (e.g., '0 9 * * MON-FRI')"
+                    timezone:
+                      type: string
+                      description: 'Timezone for the schedule'
+                      default: 'UTC'
+                webhooks:
+                  type: object
+                  description: 'Webhook configuration for web apps'
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: 'Enable webhook endpoint'
+                      default: false
+                    path:
+                      type: string
+                      description: 'Webhook path'
+                      default: '/'
+                    methods:
+                      type: array
+                      description: 'HTTP methods to allow'
+                      items:
+                        type: string
+                        enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
+                      default: ['GET', 'POST']
+                deployment:
+                  type: object
+                  description: 'Deployment configuration'
+                  properties:
+                    strategy:
+                      type: string
+                      description: 'Deployment strategy'
+                      enum: ['replace', 'rolling']
+                      default: 'rolling'
+                    healthCheck:
+                      type: object
+                      description: 'Health check configuration'
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: true
+                        path:
+                          type: string
+                          description: 'Health check endpoint path'
+                          default: '/health'
+                        timeout:
+                          type: integer
+                          description: 'Health check timeout in seconds'
+                          minimum: 1
+                          maximum: 300
+                          default: 30
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  description: 'Current phase of the deployment'
+                  enum: ['Pending', 'Deploying', 'Ready', 'Failed', 'Terminating']
+                conditions:
+                  type: array
+                  description: 'List of conditions'
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                        description: 'Type of condition'
+                      status:
+                        type: string
+                        description: 'Status of condition'
+                        enum: ['True', 'False', 'Unknown']
+                      reason:
+                        type: string
+                        description: 'Machine-readable reason'
+                      message:
+                        type: string
+                        description: 'Human-readable message'
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                        description: 'Last transition time'
+                modalAppId:
+                  type: string
+                  description: 'Modal application ID'
+                url:
+                  type: string
+                  description: 'Application URL if web app'
+                lastDeployment:
+                  type: string
+                  format: date-time
+                  description: 'Timestamp of last deployment'
+                observedGeneration:
+                  type: integer
+                  description: 'Generation of spec that was last processed'
+      additionalPrinterColumns:
+        - name: App Name
+          type: string
+          description: Modal application name
+          jsonPath: .spec.appName
+        - name: Phase
+          type: string
+          description: Current deployment phase
+          jsonPath: .status.phase
+        - name: Environment
+          type: string
+          description: Modal environment
+          jsonPath: .spec.environment.name
+        - name: URL
+          type: string
+          description: Application URL
+          jsonPath: .status.url
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: modaldeployments
+    singular: modaldeployment
+    kind: ModalDeployment
+    shortNames:
+      - md
+      - modal

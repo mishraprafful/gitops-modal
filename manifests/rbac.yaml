@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modal-system
+  labels:
+    name: modal-system
+    app.kubernetes.io/name: modal-operator
+    app.kubernetes.io/component: system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: modal-operator
+  namespace: modal-system
+  labels:
+    app.kubernetes.io/name: modal-operator
+    app.kubernetes.io/component: controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: modal-operator-role
+  labels:
+    app.kubernetes.io/name: modal-operator
+    app.kubernetes.io/component: rbac
+rules:
+  # ModalDeployment resources
+  - apiGroups: ['modal.io']
+    resources: ['modaldeployments']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['modal.io']
+    resources: ['modaldeployments/status']
+    verbs: ['get', 'update', 'patch']
+  - apiGroups: ['modal.io']
+    resources: ['modaldeployments/finalizers']
+    verbs: ['update']
+
+  # Core resources
+  - apiGroups: ['']
+    resources: ['secrets']
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['']
+    resources: ['configmaps']
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['']
+    resources: ['services']
+    verbs: ['get', 'list', 'watch']
+
+  # Events
+  - apiGroups: ['']
+    resources: ['events']
+    verbs: ['create', 'patch']
+
+  # Leases for leader election
+  - apiGroups: ['coordination.k8s.io']
+    resources: ['leases']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+
+  # Metrics and health
+  - apiGroups: ['']
+    resources: ['endpoints']
+    verbs: ['get', 'list', 'watch']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: modal-operator-rolebinding
+  labels:
+    app.kubernetes.io/name: modal-operator
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: modal-operator-role
+subjects:
+  - kind: ServiceAccount
+    name: modal-operator
+    namespace: modal-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: modal-operator-leader-election
+  namespace: modal-system
+  labels:
+    app.kubernetes.io/name: modal-operator
+    app.kubernetes.io/component: rbac
+rules:
+  - apiGroups: ['']
+    resources: ['configmaps']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['coordination.k8s.io']
+    resources: ['leases']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['']
+    resources: ['events']
+    verbs: ['create', 'patch']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: modal-operator-leader-election
+  namespace: modal-system
+  labels:
+    app.kubernetes.io/name: modal-operator
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: modal-operator-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: modal-operator
+    namespace: modal-system
