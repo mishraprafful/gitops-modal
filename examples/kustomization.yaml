@@ -1,0 +1,4 @@
+resources:
+  - function-deployment.yaml
+  - gpu-job-deployment.yaml
+  - modal-examples-hello-world.yaml

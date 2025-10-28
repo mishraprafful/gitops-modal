@@ -21,8 +21,11 @@ logger = logging.getLogger(__name__)
 # Initialize Modal client
 try:
     if os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"):
-        modal_client = modal.Client()
+        # Modal client is initialized automatically when imported
+        # We just need to ensure credentials are available
+        import modal
         logger.info("Modal client initialized successfully")
+        modal_client = None  # Will be initialized per-operation
     else:
         logger.error(
             "Modal credentials not found. Set MODAL_TOKEN_ID and MODAL_TOKEN_SECRET environment variables"
@@ -49,7 +52,7 @@ except Exception as e:
     sys.exit(1)
 
 # Initialize controller
-controller = ModalController(modal_client, custom_objects_api, core_v1_api)
+controller = ModalController(None, custom_objects_api, core_v1_api)
 
 
 @kopf.on.create("modal.io", "v1", "modaldeployments")

@@ -49,6 +49,14 @@ spec:
                 secretKeyRef:
                   name: modal-credentials
                   key: token-secret
+            # Modal CLI configuration
+            - name: MODAL_CONFIG_PATH
+              value: '/home/operator/.modal'
+            - name: MODAL_ENVIRONMENT
+              value: 'main'
+            # Ensure git is available for cloning repos
+            - name: GIT_CONFIG_GLOBAL
+              value: '/home/operator/.gitconfig'
           ports:
             - name: metrics
               containerPort: 8080
@@ -81,17 +89,26 @@ spec:
               memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: false  # Modal CLI needs to write config files
             runAsNonRoot: true
-            runAsUser: 65532
+            runAsUser: 1000  # operator user ID
+            runAsGroup: 1000
             capabilities:
               drop:
                 - ALL
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: modal-config
+              mountPath: /home/operator/.modal
+            - name: git-workspace
+              mountPath: /home/operator/workspace
       volumes:
         - name: tmp
+          emptyDir: {}
+        - name: modal-config
+          emptyDir: {}
+        - name: git-workspace
           emptyDir: {}
       nodeSelector:
         kubernetes.io/os: linux

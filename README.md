@@ -20,6 +20,7 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
 - Kubernetes cluster (1.19+)
 - kubectl configured
 - Modal account with API credentials
+- Modal CLI installed (`pip install modal`)
 - Docker (for building custom operator image)
 
 ### Installation
@@ -55,7 +56,6 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
    kind: ModalDeployment
    metadata:
      name: hello-world
-     namespace: default
    spec:
      appName: hello-world-function
      description: "My first Modal function via GitOps"
@@ -120,6 +120,13 @@ source:
 ```
 
 ### Environment Configuration
+
+Configure environment variables and secrets for your Modal applications.
+
+**Priority Order (highest to lowest):**
+1. Kubernetes secrets
+2. Explicit `variables` in YAML
+3. Default values
 
 ```yaml
 environment:
@@ -285,7 +292,6 @@ spec:
        path: deployments
      destination:
        server: https://kubernetes.default.svc
-       namespace: default
      syncPolicy:
        automated:
          prune: true
@@ -419,16 +425,27 @@ kubectl describe modaldeployment <name>
 ### Building the Operator
 
 ```bash
-# Build Docker image
-docker build -t modal-operator:latest ./operator
+# Build and test Docker image (recommended)
+./build.sh
+
+# Or build manually
+docker build -t modal-operator:latest -f operator/Dockerfile operator/
 
 # Run locally (for development)
 cd operator
 pip install -r requirements.txt
 export MODAL_TOKEN_ID="your-token"
 export MODAL_TOKEN_SECRET="your-secret"
-python main.py
+python setup_modal.py  # Setup Modal CLI
+python main.py          # Start operator
 ```
+
+**Docker Image Features:**
+- ✅ Modal CLI pre-installed and configured
+- ✅ Git support for repository cloning  
+- ✅ Proper user permissions and security
+- ✅ Automatic Modal authentication setup
+- ✅ Health checks and error handling
 
 ### Testing
 

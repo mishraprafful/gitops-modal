@@ -2,7 +2,6 @@ apiVersion: modal.io/v1
 kind: ModalDeployment
 metadata:
   name: hello-world-function
-  namespace: default
   labels:
     app: hello-world
     type: function
@@ -10,10 +9,16 @@ spec:
   appName: hello-world-function
   description: 'A simple hello world Modal function'
   source:
-    git:
-      repository: 'https://github.com/your-org/modal-apps'
-      branch: 'main'
-      path: 'functions/hello_world.py'
+    # Option 1: Use a real public repository (update with your repo)
+    # git:
+    #   repository: 'https://github.com/modal-labs/modal-examples'
+    #   branch: 'main'
+    #   path: 'hello_world.py'
+    
+    # Option 2: Use container image (recommended for testing)
+    image:
+      name: 'python'
+      tag: '3.11-slim'
   environment:
     name: 'main'
     variables:

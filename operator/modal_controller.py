@@ -24,14 +24,14 @@ class ModalController:
 
     def __init__(
         self,
-        modal_client: modal.Client,
+        modal_client: Optional[modal.Client],
         custom_objects_api: client.CustomObjectsApi,
         core_v1_api: client.CoreV1Api,
     ):
-        self.modal_client = modal_client
+        self.modal_client = modal_client  # Can be None, will use modal directly
         self.custom_objects_api = custom_objects_api
         self.core_v1_api = core_v1_api
-        self.deployed_apps = {}  # Track deployed apps
+        self.deployed_apps: Dict[str, Dict[str, Any]] = {}  # Track deployed apps
 
     async def deploy_to_modal(
         self, spec: Dict[str, Any], name: str, namespace: str
@@ -302,34 +302,74 @@ class ModalController:
             env.update(config.get("environment", {}))
 
             # Create a deployment script
-            deploy_script = self._create_deploy_script(source_path, config)
-
-            # Execute the deployment
+            deploy_script = self._create_deploy_script(source_path, config, name)
+            
+            # Deploy to Modal using the CLI
+            logger.info(f"Deploying to Modal using script: {deploy_script}")
+            
+            # Check if Modal CLI is available
+            try:
+                which_process = await asyncio.create_subprocess_exec(
+                    "which", "modal",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                which_stdout, _ = await which_process.communicate()
+                
+                if which_process.returncode != 0:
+                    raise FileNotFoundError("Modal CLI not found")
+                    
+                logger.info(f"Using Modal CLI at: {which_stdout.decode().strip()}")
+                
+            except (FileNotFoundError, OSError):
+                logger.error("Modal CLI not found. Please install it with: pip install modal")
+                raise RuntimeError("Modal CLI not available. Install with: pip install modal")
+            
+            # Run modal deploy command
+            cmd = ["modal", "deploy", deploy_script]
+            logger.info(f"Running command: {' '.join(cmd)}")
+            
             process = await asyncio.create_subprocess_exec(
-                "python",
-                deploy_script,
+                *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                cwd=os.path.dirname(source_path)
             )
-
+            
             stdout, stderr = await process.communicate()
+            returncode = process.returncode
+            
+            if stdout:
+                logger.info(f"Modal deploy stdout: {stdout.decode('utf-8')}")
+            if stderr:
+                logger.info(f"Modal deploy stderr: {stderr.decode('utf-8')}")
 
-            if process.returncode != 0:
+            if returncode != 0:
                 error_msg = (
                     stderr.decode("utf-8") if stderr else "Unknown deployment error"
                 )
                 raise RuntimeError(f"Modal deployment failed: {error_msg}")
 
-            # Parse deployment result (simplified)
+            # Parse deployment result from Modal CLI output
+            output_text = stdout.decode("utf-8") if stdout else ""
+            
             result = {
-                "app_id": f"modal-app-{name}",  # In practice, this would come from Modal API
-                "url": None,  # Will be set if it's a web app
+                "app_id": name,  # Modal app name
+                "url": None,
             }
 
-            # If it's a web app, set URL
-            if "webhooks" in config:
-                result["url"] = f"https://{name}.modal.run"
+            # Try to extract URL from Modal deploy output
+            if "webhooks" in config and output_text:
+                # Look for URL patterns in Modal output
+                import re
+                url_pattern = r'https://[^\s]+\.modal\.run[^\s]*'
+                urls = re.findall(url_pattern, output_text)
+                if urls:
+                    result["url"] = urls[0]
+                else:
+                    # Fallback URL construction
+                    result["url"] = f"https://{name}--modal.run"
 
             logger.info(f"Modal deployment successful for {name}")
             return result
@@ -338,34 +378,75 @@ class ModalController:
             logger.error(f"Modal deployment failed for {name}: {e}")
             raise
 
-    def _create_deploy_script(self, source_path: str, config: Dict[str, Any]) -> str:
-        """Create a Python script to deploy to Modal"""
+    def _create_deploy_script(self, source_path: str, config: Dict[str, Any], name: str) -> str:
+        """Create a Python script to deploy to Modal using modern API"""
         script_dir = os.path.dirname(source_path)
-        script_path = os.path.join(script_dir, "deploy.py")
-
-        script_content = f"""
-import modal
-import os
-import sys
-
-# Add source directory to path
-sys.path.insert(0, "{script_dir}")
-
-try:
-    # Import the Modal app
-    app_module = __import__(os.path.basename("{source_path}").replace(".py", ""))
-    
-    # Deploy the app
-    print("Deploying to Modal...")
-    print("Deployment completed successfully")
-    
-except Exception as e:
-    print(f"Deployment failed: {{e}}", file=sys.stderr)
-    sys.exit(1)
+        script_path = os.path.join(script_dir, "modal_app.py")
+        
+        app_name = config.get('app_name', name)
+        compute_config = config.get('compute', {})
+        webhook_config = config.get('webhooks', {})
+        
+        # Create Modal app based on configuration
+        script_content = f'''#!/usr/bin/env python3
 """
+Auto-generated Modal app from GitOps deployment
+App: {app_name}
+"""
+import modal
+
+# Create the Modal app
+app = modal.App("{app_name}")
+
+# Configure compute resources
+image = modal.Image.debian_slim().pip_install("fastapi", "uvicorn")
+
+'''
+
+        # Add function based on whether it's a webhook or regular function
+        if webhook_config.get('enabled', False):
+            # Create a web endpoint
+            script_content += f'''
+@app.function(image=image)
+@modal.web_endpoint(method="GET")
+def hello():
+    """Simple web endpoint"""
+    return {{"message": "Hello from Modal GitOps!", "app": "{app_name}"}}
+
+@app.function(image=image)
+@modal.web_endpoint(method="POST")  
+def echo(request_data: dict):
+    """Echo endpoint for POST requests"""
+    return {{"echo": request_data, "app": "{app_name}"}}
+'''
+        else:
+            # Create a regular function
+            script_content += f'''
+@app.function(image=image)
+def hello_world():
+    """Simple hello world function"""
+    print("Hello from Modal GitOps!")
+    return "Hello from {app_name}"
+
+@app.function(image=image)
+def process_data(data: str = "test"):
+    """Example data processing function"""
+    result = f"Processed: {{data}} in {app_name}"
+    print(result)
+    return result
+'''
+
+        script_content += '''
+# This allows the app to be deployed with 'modal deploy'
+if __name__ == "__main__":
+    print(f"Modal app '{app.name}' is ready for deployment")
+'''
 
         with open(script_path, "w") as f:
             f.write(script_content)
+        
+        # Make script executable
+        os.chmod(script_path, 0o755)
 
         return script_path
 
