@@ -71,6 +71,7 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      KIND_VERSION: v1.27.3
 
     steps:
       - name: Checkout code
@@ -114,18 +115,24 @@ jobs:
           tags: ${{ steps.image-tag.outputs.image-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          push: false
-          outputs: type=docker,dest=/tmp/modal-operator.tar
+          load: true
         id: docker-build
 
-      - name: Load Docker image
-        run: |
-          docker load -i /tmp/modal-operator.tar
-          echo "✅ Docker image built successfully"
-          echo "✅ Unit tests passed during Docker build"
+      # Cache kind node images to speed up cluster creation
+      - name: Cache kind node image
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kind-image
+          key: kind-node-image-${{ env.KIND_VERSION }}
 
       - name: Create kind cluster
         run: |
+          # Use cached node image if available
+          if [ -f /tmp/kind-image/node.tar ]; then
+            echo "Loading cached kind node image..."
+            docker load -i /tmp/kind-image/node.tar
+          fi
+
           kind create cluster \
             --name ${{ env.KIND_CLUSTER_NAME }} \
             --wait 300s \
@@ -141,6 +148,17 @@ jobs:
                 kubeletExtraArgs:
                   node-labels: "ingress-ready=true"
           EOF
+
+          # Save kind node image for caching (if not already cached)
+          if [ ! -f /tmp/kind-image/node.tar ]; then
+            mkdir -p /tmp/kind-image
+            NODE_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "kindest/node" | head -n1)
+            if [ -n "$NODE_IMAGE" ]; then
+              echo "Saving kind node image for future runs: $NODE_IMAGE"
+              docker save "$NODE_IMAGE" -o /tmp/kind-image/node.tar || true
+            fi
+          fi
+
           echo "✅ Kind cluster created successfully"
 
       - name: Wait for cluster to be ready
