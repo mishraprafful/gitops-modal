@@ -197,9 +197,10 @@ class ModalController:
 
             # Extract app from container (simplified - in practice you'd need more sophisticated logic)
             # For now, assume the image has a standard Modal app at /app/main.py
+            # Create an empty file - it will be wrapped in a Modal app structure later
             dummy_app = os.path.join(temp_dir, "main.py")
             with open(dummy_app, "w") as f:
-                f.write("# Placeholder for container-based app\nimport modal\n")
+                f.write("# Placeholder for container-based app\n")
 
             return dummy_app
 
@@ -483,7 +484,10 @@ class ModalController:
                 original_content = f.read()
 
             # Check if it's already a Modal app
-            if "modal.App(" in original_content or "import modal" in original_content:
+            if "modal.App(" in original_content or (
+                "import modal" in original_content
+                and "app = modal.App" in original_content
+            ):
                 # It's already a Modal app - use it directly but update app name and decorators
                 updated_content = self._update_modal_app_config(
                     original_content, app_name, decorator_args_str
@@ -539,12 +543,30 @@ class ModalController:
         """Update existing Modal app with new configuration"""
         import re
 
-        # Update app name if it exists
-        content = re.sub(
-            r'modal\.App\(["\'][^"\']*["\']\)',
-            f'modal.App("{app_name}")',
-            original_content,
+        # Ensure app variable is defined - Modal requires it at module level
+        has_app_definition = "app = modal.App" in original_content or re.search(
+            r"app\s*=\s*modal\.App", original_content
         )
+
+        if not has_app_definition:
+            # Add app definition if missing (this handles cases where import modal exists but app isn't defined)
+            if "import modal" in original_content:
+                # Find the import statement and add app after it
+                import_pattern = r"(import modal[^\n]*)"
+                replacement = (
+                    rf"\1\n\n# Create the Modal app\napp = modal.App(\"{app_name}\")"
+                )
+                content = re.sub(import_pattern, replacement, original_content, count=1)
+            else:
+                # No import modal - add both
+                content = f'import modal\n\n# Create the Modal app\napp = modal.App("{app_name}")\n\n{original_content}'
+        else:
+            # Update app name if it exists
+            content = re.sub(
+                r'modal\.App\(["\'][^"\']*["\']\)',
+                f'modal.App("{app_name}")',
+                original_content,
+            )
 
         # Update @app.function decorators to include compute config
         # This is a simple approach - in production you'd want more sophisticated parsing
@@ -587,7 +609,7 @@ def main():
 
 # Entry point for modal deploy
 if __name__ == "__main__":
-    print(f"Modal app '{{app.name}}' is ready for deployment")
+    print("Modal app '{app_name}' is ready for deployment")
 '''
         return wrapped_content
 
@@ -651,10 +673,10 @@ def process_data(data: str = "test"):
     return result
 '''
 
-        script_content += """
+        script_content += f"""
 # This allows the app to be deployed with 'modal deploy'
 if __name__ == "__main__":
-    print(f"Modal app '{app.name}' is ready for deployment")
+    print("Modal app '{app_name}' is ready for deployment")
 """
 
         return script_content
