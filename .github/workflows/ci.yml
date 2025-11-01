@@ -69,8 +69,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       KIND_VERSION: v1.27.3
 
     steps:
@@ -166,17 +164,16 @@ jobs:
           kubectl wait --for=condition=Ready nodes --all --timeout=300s
           echo "✅ Kind cluster is ready"
 
+      - name: Create .env file with Modal credentials
+        run: |
+          cat > .env <<EOF
+          MODAL_TOKEN_ID=${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET=${{ secrets.MODAL_TOKEN_SECRET }}
+          EOF
+          echo "✅ Created .env file with Modal credentials"
+
       - name: Install operator using make install
         run: |
-          # Make install will:
-          # - Use the IMAGE we explicitly pass (matching the built image)
-          # - Update deployment.yaml with the image we built
-          # - Install CRD, RBAC, and operator deployment
-          # - Create Modal credentials secret
-          # - Wait for operator to be ready
-          # - Load image into kind cluster automatically
-          # Note: We pass IMAGE explicitly to ensure it matches the tag we built
-          #       This ensures load-kind uses the same tag that exists locally
           make install IMAGE=${{ steps.image-tag.outputs.image-tag }}
           echo "✅ Operator installed successfully"
           echo "✅ CRD installed (verified by make install)"

@@ -146,17 +146,15 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 	@kubectl apply -f crds/modaldeployment-crd.yaml
 	@kubectl wait --for condition=established --timeout=60s crd/modaldeployments.modal.io || true
 
-	@# Create Modal credentials secret
+	@# Create Modal credentials secret (read from .env file or environment)
 	@echo "$(BLUE)Creating Modal credentials secret...$(NC)"
-	@export MODAL_TOKEN_ID='$(MODAL_TOKEN_ID)' && \
-		export MODAL_TOKEN_SECRET='$(MODAL_TOKEN_SECRET)' && \
-		printf '%s' "$$MODAL_TOKEN_ID" > /tmp/modal-token-id.txt && \
-		printf '%s' "$$MODAL_TOKEN_SECRET" > /tmp/modal-token-secret.txt && \
-		kubectl create secret generic modal-credentials \
-			--namespace=$(NAMESPACE) \
-			--from-file=token-id=/tmp/modal-token-id.txt \
-			--from-file=token-secret=/tmp/modal-token-secret.txt \
-			--dry-run=client -o yaml | kubectl apply -f - && \
+	@printf '%s' "$(MODAL_TOKEN_ID)" > /tmp/modal-token-id.txt || true
+	@printf '%s' "$(MODAL_TOKEN_SECRET)" > /tmp/modal-token-secret.txt || true
+	@kubectl create secret generic modal-credentials \
+		--namespace=$(NAMESPACE) \
+		--from-file=token-id=/tmp/modal-token-id.txt \
+		--from-file=token-secret=/tmp/modal-token-secret.txt \
+		--dry-run=client -o yaml | kubectl apply -f - && \
 		echo "$(GREEN)✅ Modal credentials secret created$(NC)" || \
 		echo "$(YELLOW)⚠️  Warning: Failed to create Modal credentials secret$(NC)"
 	@rm -f /tmp/modal-token-id.txt /tmp/modal-token-secret.txt
