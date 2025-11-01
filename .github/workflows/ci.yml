@@ -26,7 +26,7 @@ env:
 jobs:
   # Stage 0: Linting
   # Purpose: Run code quality checks (Python, YAML, Markdown)
-  # Runs in parallel with docker-tests for faster feedback
+  # Runs in parallel with e2e-test for faster feedback
   lint:
     name: Lint Code
     runs-on: ubuntu-latest
@@ -49,46 +49,17 @@ jobs:
         run: |
           pre-commit run --all-files
 
-  # Stage 1: Docker Build Tests (Unit Tests)
-  # Purpose: Verify Docker image builds correctly and unit tests pass
-  # This stage runs independently and must pass before proceeding
-  # Runs in parallel with lint job
-  docker-tests:
-    name: Docker Build and Unit Tests
+  # Stage 2: E2E Test
+  # Purpose: Build Docker image, create kind cluster, install operator, and run E2E tests
+  # All steps run on the same VM to:
+  #   - Build image once (avoid rebuilding)
+  #   - Share the kind cluster across all operations
+  #   - Run all tests sequentially for better failure isolation
+  # Runs in parallel with lint (no dependency)
+  e2e-test:
+    name: E2E Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image
-        working-directory: operator
-        run: |
-          docker build -t modal-operator:test -f Dockerfile .
-          echo "✅ Docker image built successfully"
-
-      - name: Verify Modal package in image
-        run: |
-          docker run --rm modal-operator:test python -c "import modal; print('✓ Modal package imported successfully')"
-
-      - name: Verify tests passed during build
-        run: |
-          # Tests run automatically during Docker build
-          # If we got here, the build succeeded, which means tests passed
-          echo "✅ All unit tests passed during Docker build"
-
-  # Stage 2: Kind Cluster Setup
-  # Purpose: Create and configure a kind Kubernetes cluster
-  # Depends on: docker-tests and lint must pass
-  setup-kind:
-    name: Setup Kind Cluster
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [docker-tests, lint]
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -103,6 +74,20 @@ jobs:
         uses: helm/kind-action@v1.8.0
         with:
           install_only: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (includes unit tests)
+        working-directory: operator
+        run: |
+          docker build -t modal-operator:test -f Dockerfile .
+          echo "✅ Docker image built successfully"
+          echo "✅ Unit tests passed during Docker build"
+
+      - name: Verify Modal package in image
+        run: |
+          docker run --rm modal-operator:test python -c "import modal; print('✓ Modal package imported successfully')"
 
       - name: Create kind cluster
         run: |
@@ -125,57 +110,31 @@ jobs:
 
       - name: Wait for cluster to be ready
         run: |
+          mkdir -p $HOME/.kube
+          kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > $HOME/.kube/config
           kubectl cluster-info --context kind-${{ env.KIND_CLUSTER_NAME }}
           kubectl wait --for=condition=Ready nodes --all --timeout=300s
           echo "✅ Kind cluster is ready"
 
-  # Stage 3: Operator Installation
-  # Purpose: Build operator image, load into kind, and install operator using Makefile
-  # This verifies that `make deploy` works correctly in CI
-  # Depends on: setup-kind must pass
-  install-operator:
-    name: Install Operator
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: setup-kind
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
-
-      - name: Install kind
-        uses: helm/kind-action@v1.8.0
-        with:
-          install_only: true
-
-      - name: Set up kind cluster context
+      - name: Load Docker image into kind
         run: |
-          mkdir -p $HOME/.kube
-          kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > $HOME/.kube/config
-          kubectl cluster-info --context kind-${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image modal-operator:test --name ${{ env.KIND_CLUSTER_NAME }}
+          echo "✅ Docker image loaded into kind cluster"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Install operator using make deploy
+      - name: Install operator using make install
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           IMAGE: modal-operator:test
         run: |
-          # Make deploy will:
-          # - Build Docker image with auto-generated tag (tests run during build)
-          # - Automatically detect kind cluster and load image via make load-kind
+          # Make install will:
+          # - Update deployment.yaml with the image we built
           # - Install CRD, RBAC, and operator deployment
           # - Create Modal credentials secret
           # - Wait for operator to be ready
-          make deploy IMAGE=modal-operator:test
-          echo "✅ Operator installed successfully using make deploy"
+          # Note: We use make install (not make deploy) to avoid rebuilding the image
+          make install IMAGE=modal-operator:test
+          echo "✅ Operator installed successfully"
 
       - name: Verify CRD installation
         run: |
@@ -196,40 +155,7 @@ jobs:
           kubectl logs -n ${{ env.OPERATOR_NAMESPACE }} \
             -l app.kubernetes.io/name=modal-operator --tail=50
 
-  # Stage 4: Example Deployment Tests (E2E)
-  # Purpose: Deploy example ModalDeployments and verify they work
-  # Depends on: install-operator must pass
-  test-examples:
-    name: Test Example Deployments
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: install-operator
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
-
-      - name: Install kind
-        uses: helm/kind-action@v1.8.0
-        with:
-          install_only: true
-
-      - name: Set up kind cluster context
-        run: |
-          mkdir -p $HOME/.kube
-          kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > $HOME/.kube/config
-          kubectl cluster-info --context kind-${{ env.KIND_CLUSTER_NAME }}
-
-      - name: Wait for operator to be ready
-        run: |
-          kubectl wait --for=condition=available --timeout=60s \
-            deployment/modal-operator -n ${{ env.OPERATOR_NAMESPACE }}
-
+      # E2E Testing: Deploy example ModalDeployments and verify they work
       - name: Test function-deployment.yaml
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
@@ -350,47 +276,16 @@ jobs:
             all-deployments.yaml
           retention-days: 7
 
-      - name: Cleanup test resources
+      - name: Cleanup test resources and cluster
         if: always()
         run: |
           echo "Cleaning up test resources..."
-          kubectl delete modaldeployment hello-world-function --ignore-not-found=true
-          kubectl delete modaldeployment modal-hello-world --ignore-not-found=true
-          kubectl delete modaldeployment modal-gpu-hello-world --ignore-not-found=true
+          kubectl delete modaldeployment hello-world-function --ignore-not-found=true || true
+          kubectl delete modaldeployment modal-hello-world --ignore-not-found=true || true
+          kubectl delete modaldeployment modal-gpu-hello-world --ignore-not-found=true || true
           echo "✅ Test resources cleaned up"
 
-  # Stage 5: Cleanup
-  # Purpose: Clean up kind cluster and resources
-  # Always runs, even if previous stages fail
-  cleanup:
-    name: Cleanup
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: [setup-kind, install-operator, test-examples]
-    if: always()
-
-    steps:
-      - name: Install kind
-        uses: helm/kind-action@v1.8.0
-        with:
-          install_only: true
-
-      - name: Delete test ModalDeployments
-        continue-on-error: true
-        run: |
-          if kind get clusters | grep -q "${{ env.KIND_CLUSTER_NAME }}"; then
-            kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > /tmp/kubeconfig 2>/dev/null || true
-            export KUBECONFIG=/tmp/kubeconfig
-
-            kubectl delete modaldeployment hello-world-function --ignore-not-found=true || true
-            kubectl delete modaldeployment modal-hello-world --ignore-not-found=true || true
-            kubectl delete modaldeployment modal-gpu-hello-world --ignore-not-found=true || true
-            echo "✅ Test ModalDeployments cleaned up"
-          fi
-
-      - name: Delete kind cluster
-        continue-on-error: true
-        run: |
+          echo "Cleaning up kind cluster..."
           if kind get clusters | grep -q "${{ env.KIND_CLUSTER_NAME }}"; then
             kind delete cluster --name ${{ env.KIND_CLUSTER_NAME }}
             echo "✅ Kind cluster deleted"
