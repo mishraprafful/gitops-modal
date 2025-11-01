@@ -395,60 +395,125 @@ class ModalController:
         compute_config = config.get("compute", {})
         webhook_config = config.get("webhooks", {})
 
-        # Create Modal app based on configuration
-        script_content = f'''#!/usr/bin/env python3
-"""
-Auto-generated Modal app from GitOps deployment
-App: {app_name}
-"""
-import modal
+        # Build compute configuration for Modal
+        gpu_config = None
+        if compute_config.get("gpu"):
+            gpu_type = compute_config["gpu"]
+            gpu_count = compute_config.get("gpu_count", 1)
 
-# Create the Modal app
-app = modal.App("{app_name}")
+            # Map GPU types from CRD to Modal's expected format
+            # CRD accepts: T4, L4, A10, A100, A100-40GB, A100-80GB, L40S, H100/H100!, H200, B200
+            # Handle GPU types that can be used directly as Python identifiers
+            simple_gpu_types = {
+                "T4": "T4",
+                "L4": "L4",
+                "A10": "A10",  # CRD uses A10, not A10G
+                "A100": "A100",
+                "L40S": "L40S",
+                "H200": "H200",
+                "B200": "B200",
+                # Legacy support for types not in CRD but might be in use
+                "A10G": "A10G",
+                "V100": "V100",
+                "K80": "K80",
+                "A6000": "A6000",
+            }
 
-# Configure compute resources
-image = modal.Image.debian_slim().pip_install("fastapi", "uvicorn")
+            gpu_type_upper = gpu_type.upper()
 
-'''
+            # Handle special GPU types that need string format due to special characters
+            if gpu_type_upper in ("A100-40GB", "A100-80GB"):
+                # Modal supports A100-40GB and A100-80GB as string format or via constants
+                # Use string format: gpu="A100-80GB:4" or modal.gpu.A100_80GB(count=4)
+                # Try using underscore format for Python identifiers
+                gpu_type_normalized = gpu_type_upper.replace("-", "_")
+                gpu_config = f"modal.gpu.{gpu_type_normalized}(count={gpu_count})"
+            elif gpu_type_upper in ("H100/H100!", "H100"):
+                # Handle H100/H100! - Modal likely supports this as H100
+                # Use H100 as the base type
+                gpu_config = f"modal.gpu.H100(count={gpu_count})"
+            elif gpu_type_upper in simple_gpu_types:
+                # Standard GPU types that map directly
+                mapped_gpu = simple_gpu_types[gpu_type_upper]
+                gpu_config = f"modal.gpu.{mapped_gpu}(count={gpu_count})"
+            else:
+                # Fallback: use the GPU type as-is (for forward compatibility)
+                # Try to create a valid Python identifier
+                gpu_type_safe = (
+                    gpu_type_upper.replace("-", "_").replace("/", "_").replace("!", "")
+                )
+                gpu_config = f"modal.gpu.{gpu_type_safe}(count={gpu_count})"
+                logger.warning(
+                    f"Unknown GPU type '{gpu_type}', using as-is: {gpu_type_safe}"
+                )
 
-        # Add function based on whether it's a webhook or regular function
-        if webhook_config.get("enabled", False):
-            # Create a web endpoint
-            script_content += f'''
-@app.function(image=image)
-@modal.web_endpoint(method="GET")
-def hello():
-    """Simple web endpoint"""
-    return {{"message": "Hello from Modal GitOps!", "app": "{app_name}"}}
+        cpu_config = compute_config.get("cpu", "0.25")
+        memory_mb = 512  # Default
+        if compute_config.get("memory"):
+            # Convert memory from string like "512Mi" to MB integer
+            memory_str = compute_config["memory"]
+            if memory_str.endswith("Mi"):
+                memory_mb = int(memory_str[:-2])
+            elif memory_str.endswith("Gi"):
+                memory_mb = int(memory_str[:-2]) * 1024
+            else:
+                memory_mb = int(memory_str)
 
-@app.function(image=image)
-@modal.web_endpoint(method="POST")  
-def echo(request_data: dict):
-    """Echo endpoint for POST requests"""
-    return {{"echo": request_data, "app": "{app_name}"}}
-'''
+        timeout = compute_config.get("timeout", 300)
+
+        # Build function decorator with compute resources
+        function_decorator_args = ["image=image"]
+        if gpu_config:
+            function_decorator_args.append(f"gpu={gpu_config}")
+        if cpu_config and cpu_config != "0.25":
+            function_decorator_args.append(f"cpu={cpu_config}")
+        if memory_mb != 512:  # Only add if different from default
+            function_decorator_args.append(f"memory={memory_mb}")
+        if timeout != 300:  # Only add if different from default
+            function_decorator_args.append(f"timeout={timeout}")
+
+        decorator_args_str = ", ".join(function_decorator_args)
+
+        # Check if source_path contains actual Modal code
+        if os.path.exists(source_path) and os.path.getsize(source_path) > 0:
+            logger.info(f"Using existing Modal app from {source_path}")
+
+            # Read the original source file
+            with open(source_path, "r") as f:
+                original_content = f.read()
+
+            # Check if it's already a Modal app
+            if "modal.App(" in original_content or "import modal" in original_content:
+                # It's already a Modal app - use it directly but update app name and decorators
+                updated_content = self._update_modal_app_config(
+                    original_content, app_name, decorator_args_str
+                )
+                script_content = updated_content
+            else:
+                # It's a regular Python file - wrap it in Modal app structure
+                script_content = self._wrap_in_modal_app(
+                    original_content,
+                    app_name,
+                    decorator_args_str,
+                    cpu_config,
+                    memory_mb,
+                    compute_config,
+                    timeout,
+                )
         else:
-            # Create a regular function
-            script_content += f'''
-@app.function(image=image)
-def hello_world():
-    """Simple hello world function"""
-    print("Hello from Modal GitOps!")
-    return "Hello from {app_name}"
-
-@app.function(image=image)
-def process_data(data: str = "test"):
-    """Example data processing function"""
-    result = f"Processed: {{data}} in {app_name}"
-    print(result)
-    return result
-'''
-
-        script_content += """
-# This allows the app to be deployed with 'modal deploy'
-if __name__ == "__main__":
-    print(f"Modal app '{app.name}' is ready for deployment")
-"""
+            # No source file or empty - create a basic Modal app
+            logger.warning(
+                f"No source file found at {source_path}, creating basic Modal app"
+            )
+            script_content = self._create_basic_modal_app(
+                app_name,
+                decorator_args_str,
+                webhook_config,
+                cpu_config,
+                memory_mb,
+                compute_config,
+                timeout,
+            )
 
         with open(script_path, "w") as f:
             f.write(script_content)
@@ -467,3 +532,136 @@ if __name__ == "__main__":
         await asyncio.sleep(1)  # Simulate API call
 
         logger.info(f"Modal app {app_id} stopped")
+
+    def _update_modal_app_config(
+        self, original_content: str, app_name: str, decorator_args_str: str
+    ) -> str:
+        """Update existing Modal app with new configuration"""
+        import re
+
+        # Update app name if it exists
+        content = re.sub(
+            r'modal\.App\(["\'][^"\']*["\']\)',
+            f'modal.App("{app_name}")',
+            original_content,
+        )
+
+        # Update @app.function decorators to include compute config
+        # This is a simple approach - in production you'd want more sophisticated parsing
+        content = re.sub(
+            r"@app\.function\([^)]*\)", f"@app.function({decorator_args_str})", content
+        )
+
+        return content
+
+    def _wrap_in_modal_app(
+        self,
+        original_content: str,
+        app_name: str,
+        decorator_args_str: str,
+        cpu_config: str,
+        memory_mb: int,
+        compute_config: dict,
+        timeout: int,
+    ) -> str:
+        """Wrap regular Python code in Modal app structure"""
+
+        wrapped_content = f'''#!/usr/bin/env python3
+"""
+GitOps Modal app from source: {app_name}
+Compute: CPU={cpu_config}, Memory={memory_mb}MB, GPU={compute_config.get('gpu', 'None')}, Timeout={timeout}s
+"""
+import modal
+
+# Create the Modal app
+app = modal.App("{app_name}")
+
+# Configure compute resources
+image = modal.Image.debian_slim().pip_install("fastapi", "uvicorn")
+
+# Original source code wrapped in Modal function
+@app.function({decorator_args_str})
+def main():
+    """Main function containing the original source code"""
+{self._indent_code(original_content, 4)}
+
+# Entry point for modal deploy
+if __name__ == "__main__":
+    print(f"Modal app '{{app.name}}' is ready for deployment")
+'''
+        return wrapped_content
+
+    def _create_basic_modal_app(
+        self,
+        app_name: str,
+        decorator_args_str: str,
+        webhook_config: dict,
+        cpu_config: str,
+        memory_mb: int,
+        compute_config: dict,
+        timeout: int,
+    ) -> str:
+        """Create a basic Modal app when no source is available"""
+
+        script_content = f'''#!/usr/bin/env python3
+"""
+Basic GitOps Modal app: {app_name}
+Compute: CPU={cpu_config}, Memory={memory_mb}MB, GPU={compute_config.get('gpu', 'None')}, Timeout={timeout}s
+"""
+import modal
+
+# Create the Modal app
+app = modal.App("{app_name}")
+
+# Configure compute resources
+image = modal.Image.debian_slim().pip_install("fastapi", "uvicorn")
+
+'''
+
+        # Add function based on whether it's a webhook or regular function
+        if webhook_config.get("enabled", False):
+            # Create a web endpoint
+            script_content += f'''
+@app.function({decorator_args_str})
+@modal.web_endpoint(method="GET")
+def hello():
+    """Simple web endpoint"""
+    return {{"message": "Hello from Modal GitOps!", "app": "{app_name}"}}
+
+@app.function({decorator_args_str})
+@modal.web_endpoint(method="POST")  
+def echo(request_data: dict):
+    """Echo endpoint for POST requests"""
+    return {{"echo": request_data, "app": "{app_name}"}}
+'''
+        else:
+            # Create a regular function
+            script_content += f'''
+@app.function({decorator_args_str})
+def hello_world():
+    """Simple hello world function"""
+    print("Hello from Modal GitOps!")
+    return "Hello from {app_name}"
+
+@app.function({decorator_args_str})
+def process_data(data: str = "test"):
+    """Example data processing function"""
+    result = f"Processed: {{data}} in {app_name}"
+    print(result)
+    return result
+'''
+
+        script_content += """
+# This allows the app to be deployed with 'modal deploy'
+if __name__ == "__main__":
+    print(f"Modal app '{app.name}' is ready for deployment")
+"""
+
+        return script_content
+
+    def _indent_code(self, code: str, spaces: int) -> str:
+        """Indent code by the specified number of spaces"""
+        indent = " " * spaces
+        lines = code.split("\n")
+        indented_lines = [indent + line if line.strip() else line for line in lines]
+        return "\n".join(indented_lines)
