@@ -13,6 +13,7 @@ from kubernetes.client.rest import ApiException
 
 from modal_controller import ModalController
 from utils import setup_logging
+from health_server import start_health_server, set_ready, stop_health_server
 
 # Fix for getpass.getuser() when running in container without proper /etc/passwd entry
 if not os.environ.get("USER"):
@@ -21,6 +22,16 @@ if not os.environ.get("USER"):
 # Configure logging
 setup_logging()
 logger = logging.getLogger(__name__)
+
+# Start health check server early (before initialization)
+# This allows /healthz to work immediately, /readyz will return 503 until ready
+health_thread = None
+health_server = None
+try:
+    health_thread, health_server = start_health_server(host="0.0.0.0", port=8081)
+except Exception as e:
+    logger.error(f"Failed to start health check server: {e}")
+    # Continue anyway - health checks will fail but operator might still work
 
 # Initialize Modal client
 try:
@@ -58,6 +69,10 @@ except Exception as e:
 
 # Initialize controller
 controller = ModalController(None, custom_objects_api, core_v1_api)
+
+# Mark operator as ready now that all initialization is complete
+set_ready()
+logger.info("Operator initialization complete - ready to handle requests")
 
 
 @kopf.on.create("modal.io", "v1", "modaldeployments")
@@ -258,6 +273,9 @@ def startup(**kwargs):
 def cleanup(**kwargs):
     """Operator cleanup handler"""
     logger.info("Modal GitOps Operator shutting down...")
+    # Stop health check server gracefully
+    if health_server:
+        stop_health_server(health_server)
 
 
 if __name__ == "__main__":
