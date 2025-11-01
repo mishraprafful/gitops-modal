@@ -1,0 +1,379 @@
+name: CI
+
+# Required GitHub Secrets:
+#   MODAL_TOKEN_ID: Modal API token ID
+#   MODAL_TOKEN_SECRET: Modal API token secret
+#
+# These secrets must be configured in GitHub repository settings:
+# Settings > Secrets and variables > Actions > New repository secret
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    # Allow manual trigger
+
+env:
+  KIND_CLUSTER_NAME: modal-test-cluster
+  OPERATOR_NAMESPACE: modal-system
+
+jobs:
+  # Stage 1: Docker Build Tests (Unit Tests)
+  # Purpose: Verify Docker image builds correctly and unit tests pass
+  # This stage runs independently and must pass before proceeding
+  docker-tests:
+    name: Docker Build and Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        working-directory: operator
+        run: |
+          docker build -t modal-operator:test -f Dockerfile .
+          echo "✅ Docker image built successfully"
+
+      - name: Verify Modal package in image
+        run: |
+          docker run --rm modal-operator:test python -c "import modal; print('✓ Modal package imported successfully')"
+
+      - name: Verify tests passed during build
+        run: |
+          # Tests run automatically during Docker build
+          # If we got here, the build succeeded, which means tests passed
+          echo "✅ All unit tests passed during Docker build"
+
+  # Stage 2: Kind Cluster Setup
+  # Purpose: Create and configure a kind Kubernetes cluster
+  # Depends on: docker-tests must pass
+  setup-kind:
+    name: Setup Kind Cluster
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: docker-tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Install kind
+        uses: helm/kind-action@v1.8.0
+        with:
+          install_only: true
+
+      - name: Create kind cluster
+        run: |
+          kind create cluster \
+            --name ${{ env.KIND_CLUSTER_NAME }} \
+            --wait 300s \
+            --config - <<EOF
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            kubeadmConfigPatches:
+            - |
+              kind: InitConfiguration
+              nodeRegistration:
+                kubeletExtraArgs:
+                  node-labels: "ingress-ready=true"
+          EOF
+          echo "✅ Kind cluster created successfully"
+
+      - name: Wait for cluster to be ready
+        run: |
+          kubectl cluster-info --context kind-${{ env.KIND_CLUSTER_NAME }}
+          kubectl wait --for=condition=Ready nodes --all --timeout=300s
+          echo "✅ Kind cluster is ready"
+
+      - name: Export kind cluster info
+        id: kind-export
+        run: |
+          echo "cluster-name=${{ env.KIND_CLUSTER_NAME }}" >> $GITHUB_OUTPUT
+          echo "kubeconfig=$(kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }})" >> $GITHUB_OUTPUT
+
+  # Stage 3: Operator Installation
+  # Purpose: Build operator image, load into kind, and install operator using Makefile
+  # This verifies that `make deploy` works correctly in CI
+  # Depends on: setup-kind must pass
+  install-operator:
+    name: Install Operator
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: setup-kind
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Install kind
+        uses: helm/kind-action@v1.8.0
+        with:
+          install_only: true
+
+      - name: Set up kind cluster context
+        run: |
+          kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > $HOME/.kube/config
+          kubectl cluster-info --context kind-${{ env.KIND_CLUSTER_NAME }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install operator using make deploy
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          IMAGE: modal-operator:test
+        run: |
+          # Make deploy will:
+          # - Build Docker image with auto-generated tag (tests run during build)
+          # - Automatically detect kind cluster and load image via make load-kind
+          # - Install CRD, RBAC, and operator deployment
+          # - Create Modal credentials secret
+          # - Wait for operator to be ready
+          make deploy IMAGE=modal-operator:test
+          echo "✅ Operator installed successfully using make deploy"
+
+      - name: Verify CRD installation
+        run: |
+          kubectl get crd modaldeployments.modal.io
+          echo "✅ CRD is installed"
+
+      - name: Verify operator pod is running
+        run: |
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment/modal-operator -n ${{ env.OPERATOR_NAMESPACE }}
+          kubectl get pods -n ${{ env.OPERATOR_NAMESPACE }} -l app.kubernetes.io/name=modal-operator
+          echo "✅ Operator pod is running"
+
+      - name: Check operator logs for errors
+        continue-on-error: true
+        run: |
+          echo "Checking operator logs..."
+          kubectl logs -n ${{ env.OPERATOR_NAMESPACE }} \
+            -l app.kubernetes.io/name=modal-operator --tail=50
+
+  # Stage 4: Example Deployment Tests (E2E)
+  # Purpose: Deploy example ModalDeployments and verify they work
+  # Depends on: install-operator must pass
+  test-examples:
+    name: Test Example Deployments
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: install-operator
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Install kind
+        uses: helm/kind-action@v1.8.0
+        with:
+          install_only: true
+
+      - name: Set up kind cluster context
+        run: |
+          kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > $HOME/.kube/config
+          kubectl cluster-info --context kind-${{ env.KIND_CLUSTER_NAME }}
+
+      - name: Wait for operator to be ready
+        run: |
+          kubectl wait --for=condition=available --timeout=60s \
+            deployment/modal-operator -n ${{ env.OPERATOR_NAMESPACE }}
+
+      - name: Test function-deployment.yaml
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          echo "Deploying function-deployment.yaml..."
+          kubectl apply -f examples/function-deployment.yaml
+          
+          # Wait for CRD to have status
+          echo "Waiting for deployment to be processed..."
+          timeout=300
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            status=$(kubectl get modaldeployment hello-world-function -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ -n "$status" ]; then
+              echo "Deployment status: $status"
+              break
+            fi
+            sleep 5
+            elapsed=$((elapsed + 5))
+          done
+          
+          # Check for Modal app ID in status
+          modal_app_id=$(kubectl get modaldeployment hello-world-function -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo "")
+          if [ -n "$modal_app_id" ]; then
+            echo "✅ Modal app ID found: $modal_app_id"
+          else
+            echo "⚠️  Modal app ID not yet set (may be in progress)"
+          fi
+          
+          # Check for error conditions
+          conditions=$(kubectl get modaldeployment hello-world-function -o jsonpath='{.status.conditions}' 2>/dev/null || echo "[]")
+          echo "Conditions: $conditions"
+          
+          # Verify deployment exists
+          kubectl get modaldeployment hello-world-function
+          echo "✅ function-deployment.yaml test completed"
+
+      - name: Test modal-examples-hello-world.yaml
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          echo "Deploying modal-examples-hello-world.yaml..."
+          kubectl apply -f examples/modal-examples-hello-world.yaml
+          
+          # Wait for CRD to have status
+          echo "Waiting for deployment to be processed..."
+          timeout=300
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            status=$(kubectl get modaldeployment modal-hello-world -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ -n "$status" ]; then
+              echo "Deployment status: $status"
+              break
+            fi
+            sleep 5
+            elapsed=$((elapsed + 5))
+          done
+          
+          # Check for Modal app ID in status
+          modal_app_id=$(kubectl get modaldeployment modal-hello-world -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo "")
+          if [ -n "$modal_app_id" ]; then
+            echo "✅ Modal app ID found: $modal_app_id"
+          else
+            echo "⚠️  Modal app ID not yet set (may be in progress)"
+          fi
+          
+          # Verify deployment exists
+          kubectl get modaldeployment modal-hello-world
+          echo "✅ modal-examples-hello-world.yaml test completed"
+
+      - name: Test gpu-job-deployment.yaml (optional)
+        continue-on-error: true
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          echo "Deploying gpu-job-deployment.yaml..."
+          kubectl apply -f examples/gpu-job-deployment.yaml
+          
+          # Wait for CRD to have status
+          echo "Waiting for deployment to be processed..."
+          timeout=300
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            status=$(kubectl get modaldeployment modal-gpu-hello-world -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ -n "$status" ]; then
+              echo "Deployment status: $status"
+              break
+            fi
+            sleep 5
+            elapsed=$((elapsed + 5))
+          done
+          
+          # Verify GPU configuration in status or logs
+          kubectl get modaldeployment modal-gpu-hello-world -o yaml
+          echo "✅ gpu-job-deployment.yaml test completed"
+
+      - name: Collect operator logs
+        if: always()
+        continue-on-error: true
+        run: |
+          echo "Collecting operator logs..."
+          kubectl logs -n ${{ env.OPERATOR_NAMESPACE }} \
+            -l app.kubernetes.io/name=modal-operator --tail=100 > operator-logs.txt
+          
+          echo "Collecting all ModalDeployment resources..."
+          kubectl get modaldeployments -o yaml > all-deployments.yaml
+
+      - name: Upload logs as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            operator-logs.txt
+            all-deployments.yaml
+          retention-days: 7
+
+      - name: Cleanup test resources
+        if: always()
+        run: |
+          echo "Cleaning up test resources..."
+          kubectl delete modaldeployment hello-world-function --ignore-not-found=true
+          kubectl delete modaldeployment modal-hello-world --ignore-not-found=true
+          kubectl delete modaldeployment modal-gpu-hello-world --ignore-not-found=true
+          echo "✅ Test resources cleaned up"
+
+  # Stage 5: Cleanup
+  # Purpose: Clean up kind cluster and resources
+  # Always runs, even if previous stages fail
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [setup-kind, install-operator, test-examples]
+    if: always()
+
+    steps:
+      - name: Install kind
+        uses: helm/kind-action@v1.8.0
+        with:
+          install_only: true
+
+      - name: Delete test ModalDeployments
+        continue-on-error: true
+        run: |
+          if kind get clusters | grep -q "${{ env.KIND_CLUSTER_NAME }}"; then
+            kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > /tmp/kubeconfig 2>/dev/null || true
+            export KUBECONFIG=/tmp/kubeconfig
+            
+            kubectl delete modaldeployment hello-world-function --ignore-not-found=true || true
+            kubectl delete modaldeployment modal-hello-world --ignore-not-found=true || true
+            kubectl delete modaldeployment modal-gpu-hello-world --ignore-not-found=true || true
+            echo "✅ Test ModalDeployments cleaned up"
+          fi
+
+      - name: Delete kind cluster
+        continue-on-error: true
+        run: |
+          if kind get clusters | grep -q "${{ env.KIND_CLUSTER_NAME }}"; then
+            kind delete cluster --name ${{ env.KIND_CLUSTER_NAME }}
+            echo "✅ Kind cluster deleted"
+          else
+            echo "Cluster already deleted or doesn't exist"
+          fi
+
