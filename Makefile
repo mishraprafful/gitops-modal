@@ -151,8 +151,8 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 		echo "$(BLUE)Creating Modal credentials secret...$(NC)"; \
 		kubectl create secret generic modal-credentials \
 			--namespace=$(NAMESPACE) \
-			--from-literal=token-id=$(MODAL_TOKEN_ID) \
-			--from-literal=token-secret=$(MODAL_TOKEN_SECRET) \
+			--from-literal=token-id="$(MODAL_TOKEN_ID)" \
+			--from-literal=token-secret="$(MODAL_TOKEN_SECRET)" \
 			--dry-run=client -o yaml | kubectl apply -f -; \
 		echo "$(GREEN)✅ Modal credentials secret created$(NC)"; \
 	else \
