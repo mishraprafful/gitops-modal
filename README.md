@@ -22,40 +22,82 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
 ### Prerequisites
 
 - Kubernetes cluster (1.19+)
+  - **Recommended for local testing: [kind](https://kind.sigs.k8s.io/)** (Kubernetes in Docker)
+  - The Makefile automatically detects kind clusters and loads images for you
 - kubectl configured
 - Modal account with API credentials
-- Modal CLI installed (`pip install modal`)
 - Docker (for building custom operator image)
 
 ### Installation
 
-1. **Clone the repository:**
+#### Quick Start with kind (Recommended for Testing)
+
+[kind](https://kind.sigs.k8s.io/) is the recommended way to test this operator locally. The Makefile automatically detects kind clusters and loads images for you.
+
+1. **Set up a kind cluster:**
+   ```bash
+   # Install kind (if not already installed)
+   # macOS: brew install kind
+   # Linux: See https://kind.sigs.k8s.io/docs/user/quick-start/#installation
+   
+   # Create a kind cluster
+   kind create cluster --name modal-test
+   
+   # Verify cluster is running
+   kubectl cluster-info --context kind-modal-test
+   ```
+
+2. **Clone the repository:**
    ```bash
    git clone https://github.com/your-org/gitops-modal
    cd gitops-modal
    ```
 
-2. **Build the operator image:**
+3. **Set up Modal credentials (optional - can use .env file):**
    ```bash
-   # Build with default image name
-   make build
-   
-   # Or build with custom image name
-   make build IMAGE=your-registry/modal-operator:v1.0.0
+   # Create .env file with your Modal credentials
+   cat > .env << EOF
+   MODAL_TOKEN_ID=your-modal-token-id
+   MODAL_TOKEN_SECRET=your-modal-token-secret
+   EOF
    ```
 
-3. **Install the operator:**
+4. **Build and install:**
    ```bash
-   # Install with default image (must match the image built above)
-   make install
+   # Build the image (automatically loads into kind if detected)
+   make build
    
-   # Or install with custom image and Modal credentials
-   make install IMAGE=your-registry/modal-operator:v1.0.0 \
+   # Install the operator (automatically loads image into kind if needed)
+   make install
+   ```
+
+The Makefile will automatically:
+- Detect if you're using a kind cluster
+- Load the Docker image into kind (no need to push to a registry!)
+- Install the operator with the correct image
+
+#### Installation on Other Clusters
+
+For non-kind clusters, you'll need to push your image to a container registry:
+
+1. **Build the operator image:**
+   ```bash
+   # Build with custom image name (include your registry)
+   make build IMAGE=your-registry.io/modal-operator:v1.0.0
+   
+   # Push to registry
+   docker push your-registry.io/modal-operator:v1.0.0
+   ```
+
+2. **Install the operator:**
+   ```bash
+   # Install with your image and Modal credentials
+   make install IMAGE=your-registry.io/modal-operator:v1.0.0 \
      MODAL_TOKEN_ID="your-token-id" \
      MODAL_TOKEN_SECRET="your-token-secret"
    
-   # Install and watch a specific namespace
-   make install WATCH_NAMESPACE=default
+   # Or use .env file for credentials
+   make install IMAGE=your-registry.io/modal-operator:v1.0.0
    ```
 
 4. **Verify installation:**
@@ -556,10 +598,33 @@ kubectl describe modaldeployment <name>
 
 ## Development
 
+### Local Development with kind
+
+For local development and testing, we recommend using [kind](https://kind.sigs.k8s.io/):
+
+```bash
+# Create a kind cluster
+kind create cluster --name modal-dev
+
+# Set kubectl context to kind
+kubectl cluster-info --context kind-modal-dev
+
+# Build and install (images automatically load into kind)
+make build install
+```
+
+**Benefits of using kind:**
+- ✅ No container registry needed - images load directly into the cluster
+- ✅ Fast iteration - rebuild and reload in seconds
+- ✅ Isolated testing environment
+- ✅ Easy cleanup - just delete the cluster
+- ✅ Automatic image loading - the Makefile handles it for you
+
 ### Building the Operator
 
 ```bash
 # Build and test Docker image (recommended)
+# Automatically loads into kind if detected
 make build
 
 # Build with custom image name
@@ -567,6 +632,9 @@ make build IMAGE=your-registry/modal-operator:v1.0.0
 
 # Build and install in one go
 make build install
+
+# Manually load image into kind (if needed)
+make load-kind
 
 # Show all available make targets
 make help

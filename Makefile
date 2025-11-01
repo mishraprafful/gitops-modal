@@ -24,7 +24,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
-.PHONY: help build install uninstall test clean update-image
+.PHONY: help build install uninstall test clean update-image load-kind check-kind
 
 help: ## Show this help message
 	@echo "$(BLUE)Modal GitOps Operator Makefile$(NC)"
@@ -47,6 +47,50 @@ help: ## Show this help message
 	@echo "Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
 
+# Function to check if current cluster is kind
+check-kind: ## Check if current Kubernetes cluster is kind
+	@if command -v kubectl > /dev/null 2>&1 && kubectl cluster-info > /dev/null 2>&1; then \
+		context=$$(kubectl config current-context 2>/dev/null || echo ""); \
+		if [ -n "$$context" ] && echo "$$context" | grep -q "kind"; then \
+			echo "kind"; \
+		elif kubectl get nodes -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | grep -q "kind"; then \
+			echo "kind"; \
+		else \
+			echo "not-kind"; \
+		fi \
+	else \
+		echo "not-kind"; \
+	fi
+
+load-kind: ## Load Docker image into kind cluster (if cluster is kind)
+	@if command -v kind > /dev/null 2>&1; then \
+		echo "$(BLUE)Checking if cluster is kind...$(NC)"; \
+		context=$$(kubectl config current-context 2>/dev/null || echo ""); \
+		kind_cluster=""; \
+		if [ -n "$$context" ] && echo "$$context" | grep -q "kind"; then \
+			kind_cluster=$$(echo "$$context" | sed 's/.*kind-//' || echo "kind"); \
+		fi; \
+		if [ -z "$$kind_cluster" ]; then \
+			kind_clusters=$$(kind get clusters 2>/dev/null | head -n1 || echo ""); \
+			if [ -n "$$kind_clusters" ]; then \
+				kind_cluster="$$kind_clusters"; \
+			fi; \
+		fi; \
+		if [ -n "$$kind_cluster" ] && kind get clusters 2>/dev/null | grep -qw "$$kind_cluster"; then \
+			echo "$(BLUE)Detected kind cluster: $$kind_cluster$(NC)"; \
+			echo "$(BLUE)Loading image $(IMAGE) into kind cluster...$(NC)"; \
+			if kind load docker-image $(IMAGE) --name $$kind_cluster 2>/dev/null; then \
+				echo "$(GREEN)✅ Image loaded into kind cluster$(NC)"; \
+			else \
+				echo "$(YELLOW)⚠ Warning: Failed to load image into kind cluster$(NC)"; \
+			fi; \
+		else \
+			echo "$(BLUE)Not a kind cluster, skipping image load$(NC)"; \
+		fi \
+	else \
+		echo "$(BLUE)kind not installed, skipping image load$(NC)"; \
+	fi
+
 build: ## Build the Docker image
 	@echo "$(BLUE)Building Modal GitOps Operator Docker image...$(NC)"
 	@echo "$(BLUE)Image: $(IMAGE)$(NC)"
@@ -56,6 +100,8 @@ build: ## Build the Docker image
 	@echo "$(BLUE)🧪 Testing Modal package import in the image...$(NC)"
 	docker run --rm $(IMAGE) python -c "import modal; print('✓ Modal package imported successfully')"
 	@echo "$(GREEN)🎉 Build and test completed!$(NC)"
+	@echo ""
+	@$(MAKE) load-kind
 
 update-image: ## Update the image in deployment.yaml (used by install)
 	@echo "$(BLUE)Updating deployment.yaml with image: $(IMAGE)$(NC)"
@@ -100,6 +146,8 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 		echo "$(RED)✗ Error: Cannot access Kubernetes cluster$(NC)"; \
 		exit 1; \
 	fi
+	@# Check if kind cluster and load image if needed
+	@$(MAKE) load-kind
 	
 	@# Create namespace
 	@echo "$(BLUE)Creating namespace $(NAMESPACE)...$(NC)"
