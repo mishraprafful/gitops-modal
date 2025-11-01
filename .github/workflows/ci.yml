@@ -12,7 +12,6 @@ on:
     branches:
       - main
       - develop
-      - 'feature/**'
   pull_request:
     branches:
       - main
@@ -25,9 +24,35 @@ env:
   OPERATOR_NAMESPACE: modal-system
 
 jobs:
+  # Stage 0: Linting
+  # Purpose: Run code quality checks (Python, YAML, Markdown)
+  # Runs in parallel with docker-tests for faster feedback
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pre-commit
+        run: |
+          pip install pre-commit
+
+      - name: Run pre-commit hooks
+        run: |
+          pre-commit run --all-files
+
   # Stage 1: Docker Build Tests (Unit Tests)
   # Purpose: Verify Docker image builds correctly and unit tests pass
   # This stage runs independently and must pass before proceeding
+  # Runs in parallel with lint job
   docker-tests:
     name: Docker Build and Unit Tests
     runs-on: ubuntu-latest
@@ -58,12 +83,12 @@ jobs:
 
   # Stage 2: Kind Cluster Setup
   # Purpose: Create and configure a kind Kubernetes cluster
-  # Depends on: docker-tests must pass
+  # Depends on: docker-tests and lint must pass
   setup-kind:
     name: Setup Kind Cluster
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: docker-tests
+    needs: [docker-tests, lint]
 
     steps:
       - name: Checkout code
