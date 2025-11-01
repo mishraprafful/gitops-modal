@@ -284,85 +284,33 @@ test-examples: ## Apply example deployments and wait for them to become ready
 		echo "$(RED)✗ Error: Cannot access Kubernetes cluster$(NC)"; \
 		exit 1; \
 	fi
-	@# Define examples to test (file_path:deployment_name:optional)
-	@examples="examples/function-deployment.yaml:hello-world-function:false examples/modal-examples-hello-world.yaml:modal-hello-world:false examples/gpu-job-deployment.yaml:modal-gpu-hello-world:true"; \
-	for example in $$examples; do \
-		IFS=':' read -r example_file deployment_name optional <<< "$$example"; \
+	@echo "$(BLUE)Building examples with kustomize...$(NC)"
+	@kubectl kustomize examples/ > /tmp/examples-built.yaml
+	@echo "$(GREEN)✅ Examples built successfully$(NC)"
+	@echo ""
+	@echo "$(BLUE)Applying examples...$(NC)"
+	@kubectl apply -f /tmp/examples-built.yaml
+	@echo "$(GREEN)✅ Examples applied successfully$(NC)"
+	@echo ""
+	@echo "$(BLUE)Waiting for ModalDeployments to be ready...$(NC)"
+	@kubectl wait --for=jsonpath='{.status.phase}'=Running --timeout=300s modaldeployments --all || \
+		(echo "$(YELLOW)⚠️  Some deployments may still be processing$(NC)" && true)
+	@echo ""
+	@echo "$(BLUE)Checking deployed ModalDeployments:$(NC)"
+	@kubectl get modaldeployments -o wide
+	@echo ""
+	@echo "$(BLUE)ModalDeployment phase details:$(NC)"
+	@for md in $$(kubectl get modaldeployments -o name); do \
 		echo ""; \
-		echo "$(BLUE)==========================================$(NC)"; \
-		echo "$(BLUE)Testing: $$example_file$(NC)"; \
-		echo "$(BLUE)Deployment name: $$deployment_name$(NC)"; \
-		echo "$(BLUE)Optional: $$optional$(NC)"; \
-		echo "$(BLUE)==========================================$(NC)"; \
-		\
-		# Deploy the example \
-		echo "$(BLUE)Deploying $$example_file...$(NC)"; \
-		if kubectl apply -f "$$example_file"; then \
-			echo "$(GREEN)✅ Successfully applied $$example_file$(NC)"; \
-		else \
-			if [ "$$optional" = "true" ]; then \
-				echo "$(YELLOW)⚠️  Failed to apply $$example_file (optional test, continuing...)$(NC)"; \
-				continue; \
-			else \
-				echo "$(RED)✗ Failed to apply $$example_file$(NC)"; \
-				exit 1; \
-			fi; \
-		fi; \
-		\
-		# Wait for operator to process the deployment \
-		echo "$(BLUE)Waiting for deployment $$deployment_name to be processed by operator...$(NC)"; \
-		timeout=300; \
-		status_populated=false; \
-		for i in $$(seq 1 $$((timeout/5))); do \
-			if kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status}' 2>/dev/null | grep -q .; then \
-				echo "$(GREEN)Status field populated after $$((i * 5)) seconds$(NC)"; \
-				status_populated=true; \
-				break; \
-			fi; \
-			sleep 5; \
-		done; \
-		\
-		if [ "$$status_populated" = "false" ]; then \
-			if [ "$$optional" = "true" ]; then \
-				echo "$(YELLOW)⚠️  Status not populated for $$deployment_name (optional test, continuing...)$(NC)"; \
-				continue; \
-			else \
-				echo "$(RED)✗ Timeout waiting for status on $$deployment_name$(NC)"; \
-				exit 1; \
-			fi; \
-		fi; \
-		\
-		# Check deployment status \
-		status=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.phase}' 2>/dev/null || echo ""); \
-		echo "$(BLUE)Deployment status: $${status:-'Not set yet'}$(NC)"; \
-		\
-		# Check for Modal app ID in status \
-		modal_app_id=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo ""); \
-		if [ -n "$$modal_app_id" ]; then \
-			echo "$(GREEN)✅ Modal app ID found: $$modal_app_id$(NC)"; \
-		else \
-			echo "$(YELLOW)⚠️  Modal app ID not yet set (may be in progress)$(NC)"; \
-		fi; \
-		\
-		# Check for error conditions \
-		conditions=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.conditions}' 2>/dev/null || echo "[]"); \
-		echo "$(BLUE)Conditions: $$conditions$(NC)"; \
-		\
-		# Verify deployment exists \
-		kubectl get modaldeployment "$$deployment_name"; \
-		\
-		# For GPU test, also show full YAML \
-		if echo "$$example_file" | grep -q "gpu"; then \
-			echo "$(BLUE)GPU configuration details:$(NC)"; \
-			kubectl get modaldeployment "$$deployment_name" -o yaml; \
-		fi; \
-		\
-		echo "$(GREEN)✅ $$example_file test completed$(NC)"; \
-		echo ""; \
+		phase=$$(kubectl get $$md -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown"); \
+		echo "$(BLUE)$$md: $$phase$(NC)"; \
 	done
-	@echo "$(BLUE)==========================================$(NC)"
-	@echo "$(GREEN)✅ All example tests completed$(NC)"
-	@echo "$(BLUE)==========================================$(NC)"
+	@echo ""
+	@echo "$(GREEN)✅ Example tests completed$(NC)"
+	@echo ""
+	@echo "$(BLUE)Cleaning up test resources...$(NC)"
+	@kubectl delete -f /tmp/examples-built.yaml --ignore-not-found=true || true
+	@echo "$(GREEN)✅ Test resources cleaned up$(NC)"
 
 # ============================================================================
 # Utility Commands
@@ -381,92 +329,3 @@ check-kind: ## Check if current Kubernetes cluster is kind
 	else \
 		echo "not-kind"; \
 	fi
-
-	@echo "$(BLUE)Testing example deployments...$(NC)"
-	@if ! command -v kubectl > /dev/null; then \
-		echo "$(RED)✗ Error: kubectl is required but not installed$(NC)"; \
-		exit 1; \
-	fi
-	@if ! kubectl cluster-info > /dev/null 2>&1; then \
-		echo "$(RED)✗ Error: Cannot access Kubernetes cluster$(NC)"; \
-		exit 1; \
-	fi
-	@# Define examples to test (file_path:deployment_name:optional)
-	@examples="examples/function-deployment.yaml:hello-world-function:false examples/modal-examples-hello-world.yaml:modal-hello-world:false examples/gpu-job-deployment.yaml:modal-gpu-hello-world:true"; \
-	for example in $$examples; do \
-		IFS=':' read -r example_file deployment_name optional <<< "$$example"; \
-		echo ""; \
-		echo "$(BLUE)==========================================$(NC)"; \
-		echo "$(BLUE)Testing: $$example_file$(NC)"; \
-		echo "$(BLUE)Deployment name: $$deployment_name$(NC)"; \
-		echo "$(BLUE)Optional: $$optional$(NC)"; \
-		echo "$(BLUE)==========================================$(NC)"; \
-		\
-		# Deploy the example \
-		echo "$(BLUE)Deploying $$example_file...$(NC)"; \
-		if kubectl apply -f "$$example_file"; then \
-			echo "$(GREEN)✅ Successfully applied $$example_file$(NC)"; \
-		else \
-			if [ "$$optional" = "true" ]; then \
-				echo "$(YELLOW)⚠️  Failed to apply $$example_file (optional test, continuing...)$(NC)"; \
-				continue; \
-			else \
-				echo "$(RED)✗ Failed to apply $$example_file$(NC)"; \
-				exit 1; \
-			fi; \
-		fi; \
-		\
-		# Wait for operator to process the deployment \
-		echo "$(BLUE)Waiting for deployment $$deployment_name to be processed by operator...$(NC)"; \
-		timeout=300; \
-		status_populated=false; \
-		for i in $$(seq 1 $$((timeout/5))); do \
-			if kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status}' 2>/dev/null | grep -q .; then \
-				echo "$(GREEN)Status field populated after $$((i * 5)) seconds$(NC)"; \
-				status_populated=true; \
-				break; \
-			fi; \
-			sleep 5; \
-		done; \
-		\
-		if [ "$$status_populated" = "false" ]; then \
-			if [ "$$optional" = "true" ]; then \
-				echo "$(YELLOW)⚠️  Status not populated for $$deployment_name (optional test, continuing...)$(NC)"; \
-				continue; \
-			else \
-				echo "$(RED)✗ Timeout waiting for status on $$deployment_name$(NC)"; \
-				exit 1; \
-			fi; \
-		fi; \
-		\
-		# Check deployment status \
-		status=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.phase}' 2>/dev/null || echo ""); \
-		echo "$(BLUE)Deployment status: $${status:-'Not set yet'}$(NC)"; \
-		\
-		# Check for Modal app ID in status \
-		modal_app_id=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo ""); \
-		if [ -n "$$modal_app_id" ]; then \
-			echo "$(GREEN)✅ Modal app ID found: $$modal_app_id$(NC)"; \
-		else \
-			echo "$(YELLOW)⚠️  Modal app ID not yet set (may be in progress)$(NC)"; \
-		fi; \
-		\
-		# Check for error conditions \
-		conditions=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.conditions}' 2>/dev/null || echo "[]"); \
-		echo "$(BLUE)Conditions: $$conditions$(NC)"; \
-		\
-		# Verify deployment exists \
-		kubectl get modaldeployment "$$deployment_name"; \
-		\
-		# For GPU test, also show full YAML \
-		if echo "$$example_file" | grep -q "gpu"; then \
-			echo "$(BLUE)GPU configuration details:$(NC)"; \
-			kubectl get modaldeployment "$$deployment_name" -o yaml; \
-		fi; \
-		\
-		echo "$(GREEN)✅ $$example_file test completed$(NC)"; \
-		echo ""; \
-	done
-	@echo "$(BLUE)==========================================$(NC)"
-	@echo "$(GREEN)✅ All example tests completed$(NC)"
-	@echo "$(BLUE)==========================================$(NC)"

@@ -154,15 +154,15 @@ jobs:
       - name: Install operator using make install
         run: |
           # Make install will:
-          # - Auto-detect image name from git commit SHA (matching the built image)
+          # - Use the IMAGE we explicitly pass (matching the built image)
           # - Update deployment.yaml with the image we built
           # - Install CRD, RBAC, and operator deployment
           # - Create Modal credentials secret
           # - Wait for operator to be ready
           # - Load image into kind cluster automatically
-          # Note: We use make install (not make deploy) to avoid rebuilding the image
-          #       Image name is auto-detected from git, matching what we built above
-          make install
+          # Note: We pass IMAGE explicitly to ensure it matches the tag we built
+          #       This ensures load-kind uses the same tag that exists locally
+          make install IMAGE=${{ steps.image-tag.outputs.image-tag }}
           echo "✅ Operator installed successfully"
           echo "✅ CRD installed (verified by make install)"
           echo "✅ Docker image loaded into kind (handled by make install)"
@@ -182,7 +182,7 @@ jobs:
             -l app.kubernetes.io/name=modal-operator --tail=50
 
       # E2E Testing: Deploy example ModalDeployments and verify they work
-      # Uses Makefile target to apply and wait for examples
+      # Uses kustomize to build, apply, wait for Ready, and cleanup examples
       - name: Test example deployments
         run: |
           make test-examples
@@ -208,18 +208,10 @@ jobs:
             all-deployments.yaml
           retention-days: 7
 
-      - name: Cleanup test resources and cluster
+      - name: Cleanup kind cluster
         if: always()
         run: |
-          echo "Cleaning up test resources..."
-          # Clean up all ModalDeployments (including ones from matrix tests)
-          kubectl delete modaldeployment hello-world-function --ignore-not-found=true || true
-          kubectl delete modaldeployment modal-hello-world --ignore-not-found=true || true
-          kubectl delete modaldeployment modal-gpu-hello-world --ignore-not-found=true || true
-          # Also clean up any other deployments that might exist
-          kubectl delete modaldeployments --all --ignore-not-found=true || true
-          echo "✅ Test resources cleaned up"
-
+          # Note: ModalDeployment resources are already cleaned up by 'make test-examples'
           echo "Cleaning up kind cluster..."
           if kind get clusters | grep -q "${{ env.KIND_CLUSTER_NAME }}"; then
             kind delete cluster --name ${{ env.KIND_CLUSTER_NAME }}
