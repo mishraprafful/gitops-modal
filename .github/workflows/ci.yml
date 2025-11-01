@@ -41,6 +41,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Cache pre-commit hooks
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+
       - name: Install pre-commit
         run: |
           pip install pre-commit
@@ -54,12 +62,28 @@ jobs:
   # All steps run on the same VM to:
   #   - Build image once (avoid rebuilding)
   #   - Share the kind cluster across all operations
-  #   - Run all tests sequentially for better failure isolation
+  #   - Run example tests in parallel using matrix strategy
   # Runs in parallel with lint (no dependency)
   e2e-test:
     name: E2E Test
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - example_file: examples/function-deployment.yaml
+            deployment_name: hello-world-function
+            optional: false
+          - example_file: examples/modal-examples-hello-world.yaml
+            deployment_name: modal-hello-world
+            optional: false
+          - example_file: examples/gpu-job-deployment.yaml
+            deployment_name: modal-gpu-hello-world
+            optional: true
 
     steps:
       - name: Checkout code
@@ -77,11 +101,25 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build Docker image (includes unit tests)
-        working-directory: operator
+        uses: docker/build-push-action@v5
+        with:
+          context: operator
+          file: operator/Dockerfile
+          tags: modal-operator:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: false
+          outputs: type=docker,dest=/tmp/modal-operator.tar
+        id: docker-build
+
+      - name: Load Docker image
         run: |
-          docker build -t modal-operator:test -f Dockerfile .
+          docker load -i /tmp/modal-operator.tar
           echo "✅ Docker image built successfully"
           echo "✅ Unit tests passed during Docker build"
 
@@ -123,8 +161,6 @@ jobs:
 
       - name: Install operator using make install
         env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           IMAGE: modal-operator:test
         run: |
           # Make install will:
@@ -156,30 +192,34 @@ jobs:
             -l app.kubernetes.io/name=modal-operator --tail=50
 
       # E2E Testing: Deploy example ModalDeployments and verify they work
-      - name: Test function-deployment.yaml
-        env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      # Uses matrix strategy to run tests in parallel
+      - name: Test ${{ matrix.example_file }}
+        continue-on-error: ${{ matrix.optional == 'true' }}
         run: |
-          echo "Deploying function-deployment.yaml..."
-          kubectl apply -f examples/function-deployment.yaml
+          echo "Deploying ${{ matrix.example_file }}..."
+          kubectl apply -f ${{ matrix.example_file }}
 
-          # Wait for CRD to have status
-          echo "Waiting for deployment to be processed..."
+          # Wait for CRD resource to be created (only needed once, but harmless if repeated)
+          echo "Waiting for ModalDeployment to be created..."
+          kubectl wait --for=condition=Established --timeout=60s crd/modaldeployments.modal.io || true
+
+          # Wait for operator to process the deployment (check for status field)
+          echo "Waiting for deployment ${{ matrix.deployment_name }} to be processed by operator..."
           timeout=300
-          elapsed=0
-          while [ $elapsed -lt $timeout ]; do
-            status=$(kubectl get modaldeployment hello-world-function -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-            if [ -n "$status" ]; then
-              echo "Deployment status: $status"
+          for i in $(seq 1 $((timeout/5))); do
+            if kubectl get modaldeployment ${{ matrix.deployment_name }} -o jsonpath='{.status}' 2>/dev/null | grep -q .; then
+              echo "Status field populated"
               break
             fi
             sleep 5
-            elapsed=$((elapsed + 5))
           done
 
+          # Check deployment status
+          status=$(kubectl get modaldeployment ${{ matrix.deployment_name }} -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+          echo "Deployment status: ${status:-'Not set yet'}"
+
           # Check for Modal app ID in status
-          modal_app_id=$(kubectl get modaldeployment hello-world-function -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo "")
+          modal_app_id=$(kubectl get modaldeployment ${{ matrix.deployment_name }} -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo "")
           if [ -n "$modal_app_id" ]; then
             echo "✅ Modal app ID found: $modal_app_id"
           else
@@ -187,73 +227,19 @@ jobs:
           fi
 
           # Check for error conditions
-          conditions=$(kubectl get modaldeployment hello-world-function -o jsonpath='{.status.conditions}' 2>/dev/null || echo "[]")
+          conditions=$(kubectl get modaldeployment ${{ matrix.deployment_name }} -o jsonpath='{.status.conditions}' 2>/dev/null || echo "[]")
           echo "Conditions: $conditions"
 
-          # Verify deployment exists
-          kubectl get modaldeployment hello-world-function
-          echo "✅ function-deployment.yaml test completed"
+          # Verify deployment exists and show details
+          kubectl get modaldeployment ${{ matrix.deployment_name }}
 
-      - name: Test modal-examples-hello-world.yaml
-        env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: |
-          echo "Deploying modal-examples-hello-world.yaml..."
-          kubectl apply -f examples/modal-examples-hello-world.yaml
-
-          # Wait for CRD to have status
-          echo "Waiting for deployment to be processed..."
-          timeout=300
-          elapsed=0
-          while [ $elapsed -lt $timeout ]; do
-            status=$(kubectl get modaldeployment modal-hello-world -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-            if [ -n "$status" ]; then
-              echo "Deployment status: $status"
-              break
-            fi
-            sleep 5
-            elapsed=$((elapsed + 5))
-          done
-
-          # Check for Modal app ID in status
-          modal_app_id=$(kubectl get modaldeployment modal-hello-world -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo "")
-          if [ -n "$modal_app_id" ]; then
-            echo "✅ Modal app ID found: $modal_app_id"
-          else
-            echo "⚠️  Modal app ID not yet set (may be in progress)"
+          # For GPU test, also show full YAML
+          if [[ "${{ matrix.example_file }}" == *"gpu"* ]]; then
+            echo "GPU configuration details:"
+            kubectl get modaldeployment ${{ matrix.deployment_name }} -o yaml
           fi
 
-          # Verify deployment exists
-          kubectl get modaldeployment modal-hello-world
-          echo "✅ modal-examples-hello-world.yaml test completed"
-
-      - name: Test gpu-job-deployment.yaml (optional)
-        continue-on-error: true
-        env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: |
-          echo "Deploying gpu-job-deployment.yaml..."
-          kubectl apply -f examples/gpu-job-deployment.yaml
-
-          # Wait for CRD to have status
-          echo "Waiting for deployment to be processed..."
-          timeout=300
-          elapsed=0
-          while [ $elapsed -lt $timeout ]; do
-            status=$(kubectl get modaldeployment modal-gpu-hello-world -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-            if [ -n "$status" ]; then
-              echo "Deployment status: $status"
-              break
-            fi
-            sleep 5
-            elapsed=$((elapsed + 5))
-          done
-
-          # Verify GPU configuration in status or logs
-          kubectl get modaldeployment modal-gpu-hello-world -o yaml
-          echo "✅ gpu-job-deployment.yaml test completed"
+          echo "✅ ${{ matrix.example_file }} test completed"
 
       - name: Collect operator logs
         if: always()
@@ -280,9 +266,12 @@ jobs:
         if: always()
         run: |
           echo "Cleaning up test resources..."
+          # Clean up all ModalDeployments (including ones from matrix tests)
           kubectl delete modaldeployment hello-world-function --ignore-not-found=true || true
           kubectl delete modaldeployment modal-hello-world --ignore-not-found=true || true
           kubectl delete modaldeployment modal-gpu-hello-world --ignore-not-found=true || true
+          # Also clean up any other deployments that might exist
+          kubectl delete modaldeployments --all --ignore-not-found=true || true
           echo "✅ Test resources cleaned up"
 
           echo "Cleaning up kind cluster..."
