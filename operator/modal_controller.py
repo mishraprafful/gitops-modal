@@ -561,12 +561,36 @@ class ModalController:
                 # No import modal - add both
                 content = f'import modal\n\n# Create the Modal app\napp = modal.App("{app_name}")\n\n{original_content}'
         else:
-            # Update app name if it exists
+            # Update app name if it exists - only match app = modal.App(...) assignments
             content = re.sub(
-                r'modal\.App\(["\'][^"\']*["\']\)',
-                f'modal.App("{app_name}")',
+                r'(app\s*=\s*)modal\.App\(["\'][^"\']*["\']\)',
+                rf'\1modal.App("{app_name}")',
                 original_content,
             )
+
+        # Ensure image variable is defined - required for function decorators
+        has_image_definition = re.search(r"image\s*=\s*modal\.Image", content)
+
+        if not has_image_definition:
+            # Add image definition after app definition
+            # Find where app is defined and add image after it
+            app_pattern = r"(app\s*=\s*modal\.App\([^\)]*\))"
+            if re.search(app_pattern, content):
+                # Insert image definition after app definition
+                content = re.sub(
+                    app_pattern,
+                    r'\1\n\n# Configure compute resources\nimage = modal.Image.debian_slim().pip_install("fastapi", "uvicorn")',
+                    content,
+                    count=1,
+                )
+            else:
+                # Fallback: add before first @app.function decorator
+                content = re.sub(
+                    r"(@app\.function)",
+                    '# Configure compute resources\nimage = modal.Image.debian_slim().pip_install("fastapi", "uvicorn")\n\n\\1',
+                    content,
+                    count=1,
+                )
 
         # Update @app.function decorators to include compute config
         # This is a simple approach - in production you'd want more sophisticated parsing
