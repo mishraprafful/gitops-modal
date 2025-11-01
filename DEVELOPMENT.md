@@ -16,6 +16,46 @@ This guide covers everything you need to know for developing the Modal GitOps Op
 
 ## Local Development Setup
 
+### Pre-commit Hooks
+
+This project uses [pre-commit](https://pre-commit.com/) to enforce code quality standards. Pre-commit hooks automatically check and format code before each commit.
+
+**Installation:**
+
+```bash
+# Install pre-commit (if not already installed)
+pip install pre-commit
+
+# Run linters - hooks will be installed automatically if needed
+make lint
+```
+
+**What it checks:**
+
+- **Python**: Linting with `ruff` and formatting with `black`
+- **YAML**: Syntax and style checking with `yamllint` (configured for Kubernetes)
+- **Markdown**: Linting with `markdownlint-cli2`
+- **General**: Trailing whitespace, end-of-file fixer, YAML/JSON validation
+
+**Usage:**
+
+```bash
+# Run hooks manually on all files
+pre-commit run --all-files
+
+# Or use the Makefile target
+make lint
+
+# Hooks run automatically on git commit
+# To skip hooks (not recommended): git commit --no-verify
+```
+
+**Update hooks:**
+
+```bash
+pre-commit autoupdate
+```
+
 ### Recommended: kind (Kubernetes in Docker)
 
 [kind](https://kind.sigs.k8s.io/) is the recommended way to develop and test this operator locally. The Makefile automatically detects kind clusters and loads images for you.
@@ -235,6 +275,11 @@ kubectl delete -f examples/function-deployment.yaml
 - Use type hints where appropriate
 - Add docstrings to functions and classes
 - Keep functions focused and small
+
+**Code formatting is enforced by pre-commit hooks:**
+- Python code is automatically formatted with `black` and linted with `ruff`
+- YAML files are linted with `yamllint` (configured for Kubernetes manifests)
+- Markdown files are linted with `markdownlint-cli2`
 
 ### Git Workflow
 

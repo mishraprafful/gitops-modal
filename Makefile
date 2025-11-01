@@ -37,7 +37,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
-.PHONY: help build deploy install uninstall test clean update-image load-kind check-kind
+.PHONY: help build deploy install uninstall test clean update-image load-kind check-kind lint
 
 help: ## Show this help message
 	@echo "$(BLUE)Modal GitOps Operator Makefile$(NC)"
@@ -263,5 +263,20 @@ clean: ## Clean up generated files
 	@if [ -f manifests/deployment.yaml.bak ]; then \
 		mv manifests/deployment.yaml.bak manifests/deployment.yaml; \
 		echo "$(GREEN)✅ Restored original deployment.yaml$(NC)"; \
+	fi
+
+lint: ## Run pre-commit hooks on all files (installs hooks automatically if not installed)
+	@if command -v pre-commit > /dev/null 2>&1; then \
+		if [ ! -f .git/hooks/pre-commit ]; then \
+			echo "$(BLUE)Pre-commit hooks not installed, installing now...$(NC)"; \
+			pre-commit install; \
+			echo "$(GREEN)✅ Pre-commit hooks installed$(NC)"; \
+		fi; \
+		echo "$(BLUE)Running linters on all files...$(NC)"; \
+		pre-commit run --all-files; \
+	else \
+		echo "$(RED)✗ Error: pre-commit is not installed$(NC)"; \
+		echo "$(BLUE)   Install it with: pip install pre-commit$(NC)"; \
+		exit 1; \
 	fi
 

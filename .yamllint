@@ -1,0 +1,67 @@
+extends: default
+
+rules:
+  # Line length - allow longer lines for Kubernetes manifests
+  line-length:
+    max: 200
+    level: warning
+
+  # Indentation - 2 spaces is standard for YAML
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Allow empty values (common in Kubernetes for optional fields)
+  empty-values:
+    forbid-in-block-mappings: false
+    forbid-in-flow-mappings: true
+
+  # Document start - not required for Kubernetes YAML
+  document-start: disable
+
+  # Comments - allow empty line before comments
+  comments:
+    min-spaces-from-content: 1
+
+  # Trailing spaces - will be caught by pre-commit hook
+  trailing-spaces: enable
+
+  # Hyphens in key names - allow in Kubernetes (e.g., api-version)
+  hyphens: disable
+
+  # Key ordering - disable to allow flexible ordering
+  key-ordering: disable
+
+  # Quoted strings - be lenient with quotes
+  quoted-strings:
+    required: only-when-needed
+    extra-allowed: ['^!', '^&', '^*', '^|', '^>', '^%', '^@']
+
+  # Braces - allow braces in values (used in Kubernetes templating)
+  braces:
+    max-spaces-inside: 1
+    min-spaces-inside: 0
+
+  # Brackets - allow brackets in values
+  brackets:
+    max-spaces-inside: 1
+    min-spaces-inside: 0
+
+  # Colons - allow colons in values
+  colons:
+    max-spaces-before: 0
+    max-spaces-after: 1
+
+  # Commas - allow trailing commas in flow sequences
+  commas:
+    max-spaces-before: 0
+    min-spaces-after: 1
+    max-spaces-after: 1
+
+  # Comments indentation - allow comments at any indentation
+  comments-indentation: disable
+
+  # Truthy values - allow yes/no/on/off as they're valid in some contexts
+  truthy:
+    allowed-values: ['true', 'false', 'True', 'False', 'TRUE', 'FALSE']
