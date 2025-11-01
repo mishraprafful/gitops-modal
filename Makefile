@@ -147,20 +147,17 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 	@kubectl wait --for condition=established --timeout=60s crd/modaldeployments.modal.io || true
 
 	@# Create Modal credentials secret
-	@echo "DEBUG: About to create secret"
-	@echo "DEBUG: NAMESPACE=$(NAMESPACE)"
-	@echo "DEBUG: MODAL_TOKEN_ID length: $$(echo '$(MODAL_TOKEN_ID)' | wc -c)"
-	@echo "DEBUG: MODAL_TOKEN_SECRET length: $$(echo '$(MODAL_TOKEN_SECRET)' | wc -c)"
 	@echo "$(BLUE)Creating Modal credentials secret...$(NC)"
-	@echo "DEBUG: Starting kubectl create command"
+	@printf '%s' '$(MODAL_TOKEN_ID)' > /tmp/modal-token-id.txt
+	@printf '%s' '$(MODAL_TOKEN_SECRET)' > /tmp/modal-token-secret.txt
 	@kubectl create secret generic modal-credentials \
 		--namespace=$(NAMESPACE) \
-		--from-literal=token-id="$(MODAL_TOKEN_ID)" \
-		--from-literal=token-secret="$(MODAL_TOKEN_SECRET)" \
+		--from-file=token-id=/tmp/modal-token-id.txt \
+		--from-file=token-secret=/tmp/modal-token-secret.txt \
 		--dry-run=client -o yaml | kubectl apply -f - && \
 		echo "$(GREEN)✅ Modal credentials secret created$(NC)" || \
 		echo "$(YELLOW)⚠️  Warning: Failed to create Modal credentials secret$(NC)"
-	@echo "DEBUG: Finished secret creation step"
+	@rm -f /tmp/modal-token-id.txt /tmp/modal-token-secret.txt
 
 	@# Install RBAC
 	@echo "$(BLUE)Installing RBAC resources...$(NC)"
