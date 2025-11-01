@@ -3,7 +3,8 @@
 # Image name and tag - can be overridden with make IMAGE=your-registry/modal-operator:v1.0.0
 IMAGE ?= modal-operator:latest
 NAMESPACE ?= modal-system
-WATCH_NAMESPACE ?= example
+# WATCH_NAMESPACE - empty means watch all namespaces, or set to a specific namespace
+WATCH_NAMESPACE ?=
 
 # Load .env file if it exists (for local development)
 # Format: MODAL_TOKEN_ID=value
@@ -36,7 +37,7 @@ help: ## Show this help message
 	@echo "  NAMESPACE=$(NAMESPACE)      Kubernetes namespace"
 	@echo "  MODAL_TOKEN_ID=             Modal token ID (optional, can be in .env)"
 	@echo "  MODAL_TOKEN_SECRET=         Modal token secret (optional, can be in .env)"
-	@echo "  WATCH_NAMESPACE=$(WATCH_NAMESPACE)      Namespace to watch (default: example, empty = all)"
+	@echo "  WATCH_NAMESPACE=            Namespace to watch (empty = all namespaces, or specify a namespace)"
 	@echo ""
 	@if [ -f .env ]; then \
 		echo "$(GREEN)✓ .env file found and will be loaded$(NC)"; \
@@ -184,10 +185,11 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 	@echo "$(BLUE)Installing operator deployment...$(NC)"
 	@kubectl apply -f manifests/deployment.yaml
 	
-	@# Update WATCH_NAMESPACE if provided
-	@if [ -n "$(WATCH_NAMESPACE)" ]; then \
-		echo "$(BLUE)Setting WATCH_NAMESPACE=$(WATCH_NAMESPACE)...$(NC)"; \
-		kubectl set env deployment/modal-operator -n $(NAMESPACE) WATCH_NAMESPACE=$(WATCH_NAMESPACE); \
+	@# WATCH_NAMESPACE is already set in deployment.yaml by update-image target
+	@if [ -z "$(WATCH_NAMESPACE)" ]; then \
+		echo "$(BLUE)WATCH_NAMESPACE is empty - operator will watch all namespaces$(NC)"; \
+	else \
+		echo "$(BLUE)WATCH_NAMESPACE is set to: $(WATCH_NAMESPACE)$(NC)"; \
 	fi
 	
 	@# Wait for operator to be ready

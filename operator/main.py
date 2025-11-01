@@ -243,7 +243,11 @@ async def delete_modal_deployment(
 def startup(**kwargs):
     """Operator startup handler"""
     logger.info("Modal GitOps Operator starting up...")
-    logger.info(f"Watching namespace: {os.getenv('WATCH_NAMESPACE', 'all namespaces')}")
+    watch_namespace = os.getenv("WATCH_NAMESPACE", "")
+    if watch_namespace:
+        logger.info(f"Watching namespace: {watch_namespace}")
+    else:
+        logger.info("Watching all namespaces")
 
 
 @kopf.on.cleanup()
@@ -260,7 +264,9 @@ if __name__ == "__main__":
     )
 
     # Run the operator
+    # If WATCH_NAMESPACE is empty or None, watch all namespaces (clusterwide)
+    watch_namespace = os.getenv("WATCH_NAMESPACE") or None
     kopf.run(
-        clusterwide=os.getenv("WATCH_NAMESPACE") is None,
-        namespace=os.getenv("WATCH_NAMESPACE"),
+        clusterwide=watch_namespace is None,
+        namespace=watch_namespace,
     )
