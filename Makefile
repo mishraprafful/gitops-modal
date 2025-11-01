@@ -1,7 +1,19 @@
 # Modal GitOps Operator Makefile
 
 # Image name and tag - can be overridden with make IMAGE=your-registry/modal-operator:v1.0.0
-IMAGE ?= modal-operator:latest
+# If not set, will use git commit SHA and append -dirty if git tree is dirty
+ifeq ($(IMAGE),)
+  ifneq ($(shell command -v git > /dev/null 2>&1 && git rev-parse --git-dir > /dev/null 2>&1 && echo "yes"),)
+    GIT_COMMIT := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
+    ifeq ($(shell git diff --quiet HEAD 2>/dev/null && git diff --cached --quiet 2>/dev/null && echo "clean"),clean)
+      IMAGE := modal-operator:$(GIT_COMMIT)
+    else
+      IMAGE := modal-operator:$(GIT_COMMIT)-dirty
+    endif
+  else
+    IMAGE := modal-operator:latest
+  endif
+endif
 NAMESPACE ?= modal-system
 # WATCH_NAMESPACE - empty means watch all namespaces, or set to a specific namespace
 WATCH_NAMESPACE ?=
@@ -33,7 +45,7 @@ help: ## Show this help message
 	@echo "Usage: make [target] [VARIABLE=value...]"
 	@echo ""
 	@echo "Variables:"
-	@echo "  IMAGE=$(IMAGE)              Docker image name and tag"
+	@echo "  IMAGE=$(IMAGE)              Docker image name and tag (auto-generated from git if not set)"
 	@echo "  NAMESPACE=$(NAMESPACE)      Kubernetes namespace"
 	@echo "  MODAL_TOKEN_ID=             Modal token ID (optional, can be in .env)"
 	@echo "  MODAL_TOKEN_SECRET=         Modal token secret (optional, can be in .env)"
@@ -102,9 +114,16 @@ load-kind: ## Load Docker image into kind cluster (if cluster is kind)
 		echo "$(BLUE)kind not installed, skipping image load$(NC)"; \
 	fi
 
-build: ## Build the Docker image
+build: ## Build the Docker image (auto-tags with git commit SHA + -dirty if tree is dirty)
 	@echo "$(BLUE)Building Modal GitOps Operator Docker image...$(NC)"
 	@echo "$(BLUE)Image: $(IMAGE)$(NC)"
+	@if command -v git > /dev/null 2>&1 && git rev-parse --git-dir > /dev/null 2>&1; then \
+		commit=$$(git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown"); \
+		echo "$(BLUE)Git commit: $$commit$(NC)"; \
+		if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then \
+			echo "$(YELLOW)⚠ Git tree is dirty - image tagged with -dirty suffix$(NC)"; \
+		fi; \
+	fi
 	docker build -t $(IMAGE) -f operator/Dockerfile operator/
 	@echo "$(GREEN)✅ Docker image built successfully: $(IMAGE)$(NC)"
 	@echo ""
