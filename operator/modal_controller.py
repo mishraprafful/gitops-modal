@@ -82,27 +82,68 @@ class ModalController:
         """Delete a Modal deployment"""
         logger.info(f"Deleting {name} from Modal")
 
-        key = f"{namespace}/{name}"
-        if key in self.deployed_apps:
-            app_info = self.deployed_apps[key]
+        # Try to get Modal app ID/name from multiple sources
+        modal_app_id = None
+        modal_app_name = spec.get("appName", name)
+        source_path = None
 
+        try:
+            # First, try to get app ID from CRD status (persists across restarts)
             try:
-                # Stop the Modal app
-                # Note: Modal doesn't have a direct delete API, but stopping/deactivating works
-                await self._stop_modal_app(app_info["app_id"])
+                resource = self.custom_objects_api.get_namespaced_custom_object(
+                    group="modal.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="modaldeployments",
+                    name=name,
+                )
+                if resource.get("status", {}).get("modalAppId"):
+                    modal_app_id = resource["status"]["modalAppId"]
+                    logger.info(f"Found Modal app ID from CRD status: {modal_app_id}")
+            except ApiException as e:
+                if e.status == 404:
+                    logger.warning(
+                        f"Resource {namespace}/{name} not found, may already be deleted"
+                    )
+                else:
+                    logger.warning(f"Failed to retrieve CRD status: {e}")
 
-                # Clean up local resources
-                if os.path.exists(app_info["source_path"]):
-                    import shutil
+            # Fall back to in-memory tracking if available
+            if not modal_app_id:
+                key = f"{namespace}/{name}"
+                if key in self.deployed_apps:
+                    app_info = self.deployed_apps[key]
+                    modal_app_id = app_info.get("app_id")
+                    source_path = app_info.get("source_path")
+                    logger.info(
+                        f"Found Modal app ID from in-memory tracking: {modal_app_id}"
+                    )
 
-                    shutil.rmtree(app_info["source_path"], ignore_errors=True)
+            # Use app name as fallback identifier
+            app_identifier = modal_app_id or modal_app_name
+            logger.info(f"Deleting Modal app using identifier: {app_identifier}")
 
+            # Stop/delete the Modal app
+            await self._stop_modal_app(app_identifier)
+
+            # Clean up local resources
+            if source_path and os.path.exists(source_path):
+                import shutil
+
+                shutil.rmtree(source_path, ignore_errors=True)
+                logger.info(f"Cleaned up local resources at {source_path}")
+
+            # Remove from in-memory tracking if present
+            key = f"{namespace}/{name}"
+            if key in self.deployed_apps:
                 del self.deployed_apps[key]
-                logger.info(f"Successfully deleted {name}")
 
-            except Exception as e:
-                logger.error(f"Failed to delete {name}: {e}")
-                raise
+            logger.info(f"Successfully deleted {name} from Modal")
+
+        except Exception as e:
+            logger.error(f"Failed to delete {name}: {e}")
+            # Don't raise - allow deletion to proceed even if Modal cleanup fails
+            logger.warning(f"Continuing with deletion despite Modal cleanup error")
 
     async def update_status(
         self,
@@ -527,15 +568,79 @@ class ModalController:
 
         return script_path
 
-    async def _stop_modal_app(self, app_id: str):
-        """Stop a Modal application"""
-        logger.info(f"Stopping Modal app {app_id}")
+    async def _stop_modal_app(self, app_identifier: str):
+        """Stop a Modal application using Modal CLI"""
+        logger.info(f"Stopping Modal app {app_identifier}")
 
-        # In a real implementation, you would call Modal's API to stop/deactivate the app
-        # For now, this is a placeholder
-        await asyncio.sleep(1)  # Simulate API call
+        try:
+            # Check if Modal CLI is available
+            try:
+                which_process = await asyncio.create_subprocess_exec(
+                    "which",
+                    "modal",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                which_stdout, _ = await which_process.communicate()
 
-        logger.info(f"Modal app {app_id} stopped")
+                if which_process.returncode != 0:
+                    logger.warning("Modal CLI not found, skipping app stop")
+                    return
+            except (FileNotFoundError, OSError):
+                logger.warning("Modal CLI not available, skipping app stop")
+                return
+
+            # Use modal app stop command to stop/deactivate the app
+            # Modal apps can be stopped which effectively deactivates them
+            cmd = ["modal", "app", "stop", app_identifier]
+            logger.info(f"Running command: {' '.join(cmd)}")
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await process.communicate()
+            returncode = process.returncode
+
+            if stdout:
+                logger.info(f"Modal stop stdout: {stdout.decode('utf-8')}")
+            if stderr:
+                stderr_text = stderr.decode("utf-8")
+                # Check if app doesn't exist (expected case)
+                if (
+                    "not found" in stderr_text.lower()
+                    or "does not exist" in stderr_text.lower()
+                ):
+                    logger.info(
+                        f"Modal app {app_identifier} not found, may already be deleted"
+                    )
+                    return
+                else:
+                    logger.warning(f"Modal stop stderr: {stderr_text}")
+
+            if returncode == 0:
+                logger.info(f"Successfully stopped Modal app {app_identifier}")
+            else:
+                # Non-zero return code - check if it's because app doesn't exist
+                error_msg = stderr.decode("utf-8") if stderr else "Unknown error"
+                if (
+                    "not found" in error_msg.lower()
+                    or "does not exist" in error_msg.lower()
+                ):
+                    logger.info(
+                        f"Modal app {app_identifier} not found, may already be deleted"
+                    )
+                else:
+                    logger.warning(
+                        f"Modal app stop returned non-zero exit code {returncode}: {error_msg}"
+                    )
+
+        except Exception as e:
+            # Log error but don't fail - app may already be deleted
+            logger.warning(f"Error stopping Modal app {app_identifier}: {e}")
+            logger.info("Continuing with deletion process")
 
     def _update_modal_app_config(
         self, original_content: str, app_name: str, decorator_args_str: str

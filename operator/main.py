@@ -203,8 +203,9 @@ async def delete_modal_deployment(
     """Handle deletion of ModalDeployment resources"""
     logger.info(f"Deleting ModalDeployment {namespace}/{name}")
 
+    # Try to update status to Terminating, but don't fail if it doesn't work
+    # (resource may already be deleted or in deletion process)
     try:
-        # Update status to Terminating
         await controller.update_status(
             name=name,
             namespace=namespace,
@@ -218,16 +219,24 @@ async def delete_modal_deployment(
                 }
             ],
         )
+    except Exception as status_error:
+        # Status update may fail if resource is already being deleted
+        logger.warning(
+            f"Failed to update status to Terminating for {namespace}/{name}: {status_error}"
+        )
+        logger.info("Continuing with Modal app deletion despite status update failure")
 
-        # Delete from Modal
+    # Delete from Modal - this should always proceed even if status update failed
+    try:
         await controller.delete_from_modal(spec, name, namespace)
-
         logger.info(f"Successfully deleted ModalDeployment {namespace}/{name}")
         return {"message": "Deployment deleted successfully"}
-
     except Exception as e:
-        logger.error(f"Failed to delete ModalDeployment {namespace}/{name}: {e}")
-        raise kopf.PermanentError(f"Deletion failed: {e}")
+        # Log error but don't raise PermanentError - allow deletion to complete
+        # The Modal app deletion may have failed, but we shouldn't block K8s resource deletion
+        logger.error(f"Error during Modal app deletion for {namespace}/{name}: {e}")
+        logger.warning("Continuing with resource deletion despite Modal cleanup error")
+        return {"message": "Deployment deletion completed with warnings"}
 
 
 @kopf.on.startup()
