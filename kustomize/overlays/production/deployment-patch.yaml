@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modal-operator
+  namespace: modal-system
+spec:
+  replicas: 2 # High availability in production
+  template:
+    spec:
+      containers:
+        - name: operator
+          env:
+            - name: LOG_LEVEL
+              value: 'INFO' # Less verbose logging in production
+          resources:
+            requests:
+              cpu: 200m # More resources for prod
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi

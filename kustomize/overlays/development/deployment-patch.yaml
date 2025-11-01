@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modal-operator
+  namespace: modal-system
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: operator
+          env:
+            - name: LOG_LEVEL
+              value: 'DEBUG' # More verbose logging in development
+          resources:
+            requests:
+              cpu: 50m # Lower resources for dev
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

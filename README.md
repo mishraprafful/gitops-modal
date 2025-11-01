@@ -390,6 +390,30 @@ spec:
 
 ## GitOps Integration
 
+### Kustomize Support
+
+The operator includes Kustomize support for environment-specific deployments:
+
+```bash
+# Base installation
+kubectl apply -k manifests/
+
+# Development environment (lower resources, DEBUG logging)
+kubectl apply -k kustomize/overlays/development
+
+# Production environment (HA, higher resources, INFO logging)
+kubectl apply -k kustomize/overlays/production
+```
+
+The base `manifests/kustomization.yaml` includes all common resources. Overlays can customize:
+- Image tags and registries
+- Resource limits and requests
+- Replica counts
+- Environment variables
+- Namespace settings
+
+See [kustomize/README.md](kustomize/README.md) for more details on creating custom overlays.
+
 ### ArgoCD Integration
 
 1. **Create ArgoCD Application:**
