@@ -129,12 +129,6 @@ jobs:
           kubectl wait --for=condition=Ready nodes --all --timeout=300s
           echo "✅ Kind cluster is ready"
 
-      - name: Export kind cluster info
-        id: kind-export
-        run: |
-          echo "cluster-name=${{ env.KIND_CLUSTER_NAME }}" >> $GITHUB_OUTPUT
-          echo "kubeconfig=$(kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }})" >> $GITHUB_OUTPUT
-
   # Stage 3: Operator Installation
   # Purpose: Build operator image, load into kind, and install operator using Makefile
   # This verifies that `make deploy` works correctly in CI
