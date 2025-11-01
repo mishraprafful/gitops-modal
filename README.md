@@ -441,6 +441,7 @@ python main.py          # Start operator
 ```
 
 **Docker Image Features:**
+
 - ✅ Modal CLI pre-installed and configured
 - ✅ Git support for repository cloning  
 - ✅ Proper user permissions and security
