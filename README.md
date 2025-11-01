@@ -6,12 +6,16 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
 
 - 🚀 **Declarative Deployments**: Define Modal applications using Kubernetes CRDs
 - 🔄 **GitOps Workflow**: Integrate with ArgoCD, Flux, or other GitOps tools
+- 🔄 **Update Support**: Automatically update deployments when CRD specs change
+- 🗑️ **Delete Support**: Properly stop and clean up Modal apps on resource deletion
 - 🎯 **Multi-Environment Support**: Deploy to different Modal environments (dev, staging, prod)
 - 📊 **Resource Management**: Configure CPU, memory, GPU, and scaling parameters
+- 🎮 **GPU Support**: Full support for all Modal GPU types (T4, L4, A10, A100, H100, H200, B200, and more)
 - 🔐 **Secret Management**: Secure handling of Modal secrets and Kubernetes secrets
 - ⏰ **Scheduled Jobs**: Support for cron-based scheduled functions
 - 🌐 **Web Applications**: Deploy FastAPI and other web apps with webhooks
 - 🔍 **Status Monitoring**: Real-time status updates and health checks
+- 💾 **Persistent State**: App IDs stored in CRD status for reliable deletion across operator restarts
 
 ## Quick Start
 
@@ -82,6 +86,20 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
    kubectl describe modaldeployment hello-world
    ```
 
+4. **Update the deployment:**
+   ```bash
+   # Edit the YAML file and reapply
+   kubectl edit modaldeployment hello-world
+   # Or apply updated YAML
+   kubectl apply -f your-deployment.yaml
+   ```
+
+5. **Delete the deployment:**
+   ```bash
+   kubectl delete modaldeployment hello-world
+   # The operator will automatically stop the Modal app
+   ```
+
 ## Configuration Reference
 
 ### ModalDeployment Spec
@@ -146,11 +164,23 @@ environment:
 ```yaml
 compute:
   cpu: "1"                      # CPU allocation (cores)
-  memory: "2Gi"                 # Memory allocation
-  gpu: "A100"                   # GPU type: T4, A10G, A100, H100
-  gpuCount: 2                   # Number of GPUs
-  timeout: 300                  # Function timeout (seconds)
+  memory: "2Gi"                 # Memory allocation (e.g., "512Mi", "1Gi", "2Ti")
+  gpu: "A100"                   # GPU type (see supported types below)
+  gpuCount: 2                   # Number of GPUs (1-8)
+  timeout: 300                  # Function timeout in seconds (1-86400)
 ```
+
+**Supported GPU Types:**
+- `T4` - NVIDIA T4 GPU
+- `L4` - NVIDIA L4 GPU
+- `A10` - NVIDIA A10 GPU
+- `A100` - NVIDIA A100 GPU
+- `A100-40GB` - NVIDIA A100 GPU (40GB memory)
+- `A100-80GB` - NVIDIA A100 GPU (80GB memory)
+- `L40S` - NVIDIA L40S GPU
+- `H100/H100!` - NVIDIA H100 GPU
+- `H200` - NVIDIA H200 GPU
+- `B200` - NVIDIA B200 GPU
 
 ### Scaling Configuration
 
@@ -227,9 +257,9 @@ spec:
   appName: ml-training-job
   description: "Machine learning training with GPU"
   source:
-    image:
-      name: "your-registry/ml-training"
-      tag: "v1.2.0"
+    git:
+      repository: "https://github.com/your-org/ml-training"
+      path: "training/train_model.py"
   environment:
     name: "main"
     variables:
@@ -242,9 +272,31 @@ spec:
   compute:
     cpu: "4"
     memory: "16Gi"
-    gpu: "A100"
-    gpuCount: 2
-    timeout: 7200
+    gpu: "A100-80GB"        # Use A100-80GB for larger models
+    gpuCount: 2             # Use 2 GPUs for training
+    timeout: 7200           # 2 hours timeout
+```
+
+### High-Performance GPU Job (H100)
+
+```yaml
+apiVersion: modal.io/v1
+kind: ModalDeployment
+metadata:
+  name: llm-inference
+spec:
+  appName: llm-inference
+  description: "LLM inference with H100 GPU"
+  source:
+    git:
+      repository: "https://github.com/your-org/llm-inference"
+      path: "inference/main.py"
+  compute:
+    cpu: "8"
+    memory: "64Gi"
+    gpu: "H100"             # H100 for maximum performance
+    gpuCount: 1
+    timeout: 3600
 ```
 
 ### Scheduled Data Pipeline
@@ -329,21 +381,60 @@ spec:
   validation: client
 ```
 
+## Lifecycle Management
+
+### Create, Update, and Delete
+
+The operator supports the full lifecycle of Modal deployments:
+
+**Create:**
+```bash
+kubectl apply -f deployment.yaml
+```
+
+**Update:**
+```bash
+# Edit the YAML and reapply, or use kubectl edit
+kubectl edit modaldeployment my-app
+kubectl apply -f updated-deployment.yaml
+```
+The operator automatically detects changes and redeploys to Modal. Modal handles versioning internally, so updates to the same app name will update the existing deployment.
+
+**Delete:**
+```bash
+kubectl delete modaldeployment my-app
+```
+The operator will:
+- Retrieve the Modal app ID from the CRD status (persists across operator restarts)
+- Stop the Modal app using `modal app stop`
+- Clean up local resources
+- Allow the Kubernetes resource deletion to complete
+
 ## Monitoring and Observability
 
 ### Status Monitoring
 
 Check deployment status:
 ```bash
-# List all deployments
+# List all deployments with status
 kubectl get modaldeployments
 
-# Get detailed status
+# Get detailed status including Modal app ID and URL
 kubectl describe modaldeployment my-app
 
 # Watch for changes
 kubectl get modaldeployments -w
+
+# Check status field for Modal app information
+kubectl get modaldeployment my-app -o jsonpath='{.status}'
 ```
+
+**Status Fields:**
+- `phase`: Current phase (Deploying, Ready, Failed, Terminating)
+- `modalAppId`: Modal app identifier (stored for reliable deletion)
+- `url`: Modal app webhook URL (if webhooks enabled)
+- `lastDeployment`: Timestamp of last deployment
+- `conditions`: Detailed conditions with timestamps
 
 ### Operator Logs
 
@@ -382,25 +473,49 @@ Example Prometheus configuration:
 
 1. **Modal credentials not found**
    ```bash
+   # Set as environment variables in the operator deployment
    kubectl create secret generic modal-credentials \
      --namespace=modal-system \
-     --from-literal=token-id=YOUR_TOKEN_ID \
-     --from-literal=token-secret=YOUR_TOKEN_SECRET
+     --from-literal=MODAL_TOKEN_ID=YOUR_TOKEN_ID \
+     --from-literal=MODAL_TOKEN_SECRET=YOUR_TOKEN_SECRET
    ```
 
 2. **Git repository access issues**
    - Ensure repository is public or provide SSH keys
    - Check network policies if using private clusters
+   - Verify git is available in the operator container
 
-3. **Operator pod crash loop**
+3. **Modal CLI not found**
+   - Ensure Modal CLI is installed in the operator image
+   - Check operator logs for Modal CLI availability
+   - Verify `modal` command is in PATH
+
+4. **GPU configuration not applied**
+   - Verify GPU type matches supported enum values exactly (case-sensitive)
+   - Check that `gpuCount` is between 1-8
+   - Review generated Modal app script for GPU configuration
+
+5. **App deletion not working**
+   - Check that `status.modalAppId` is populated in the CRD
+   - Verify Modal CLI is accessible
+   - Check operator logs for deletion errors
+   - Note: Deletion continues even if Modal cleanup fails (non-blocking)
+
+6. **Operator pod crash loop**
    ```bash
    kubectl logs -n modal-system -l app.kubernetes.io/name=modal-operator
+   kubectl describe pod -n modal-system -l app.kubernetes.io/name=modal-operator
    ```
 
-4. **CRD not found**
+7. **CRD not found**
    ```bash
    kubectl apply -f crds/modaldeployment-crd.yaml
    ```
+
+8. **Function name issues**
+   - If existing Modal apps have function names like `f`, they will be preserved
+   - New wrapped apps will use `main()` as the function name
+   - Check generated `modal_app.py` script for function definitions
 
 ### Debug Commands
 
@@ -447,6 +562,30 @@ python main.py          # Start operator
 - ✅ Proper user permissions and security
 - ✅ Automatic Modal authentication setup
 - ✅ Health checks and error handling
+
+### How It Works
+
+**Deployment Flow:**
+1. Operator watches for ModalDeployment CRDs
+2. On create/update: Clones git repo or extracts image source
+3. Generates Modal app script with compute resources (CPU, memory, GPU)
+4. Runs `modal deploy` command to deploy/update the app
+5. Stores Modal app ID in CRD status for reliable deletion
+6. Updates CRD status with deployment results
+
+**Update Flow:**
+- Detects changes to CRD spec
+- Re-runs deployment process with updated configuration
+- Modal's `deploy` command updates existing apps by name
+- CRD status updated with new deployment information
+
+**Delete Flow:**
+- Retrieves Modal app ID from CRD status (persists across restarts)
+- Falls back to in-memory tracking if status unavailable
+- Uses app name from spec as final fallback
+- Runs `modal app stop` to deactivate the app
+- Cleans up local resources
+- Non-blocking: continues even if Modal cleanup fails
 
 ### Testing
 
