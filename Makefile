@@ -37,7 +37,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
-.PHONY: help build deploy install uninstall test clean update-image load-kind check-kind lint
+.PHONY: help build deploy install uninstall test clean update-image load-kind check-kind lint test-examples
 
 help: ## Show this help message
 	@echo "$(BLUE)Modal GitOps Operator Makefile$(NC)"
@@ -58,61 +58,19 @@ help: ## Show this help message
 	fi
 	@echo ""
 	@echo "Targets:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BLUE)Deploy Commands:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / && ($$1 == "build" || $$1 == "deploy" || $$1 == "install" || $$1 == "uninstall" || $$1 == "update-image" || $$1 == "load-kind") {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BLUE)Develop Commands:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / && ($$1 == "lint" || $$1 == "test" || $$1 == "test-examples") {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BLUE)Utility Commands:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / && ($$1 == "check-kind" || $$1 == "clean" || $$1 == "help") {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
 
-# Function to check if current cluster is kind
-check-kind: ## Check if current Kubernetes cluster is kind
-	@if command -v kubectl > /dev/null 2>&1 && kubectl cluster-info > /dev/null 2>&1; then \
-		context=$$(kubectl config current-context 2>/dev/null || echo ""); \
-		if [ -n "$$context" ] && echo "$$context" | grep -q "kind"; then \
-			echo "kind"; \
-		elif kubectl get nodes -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | grep -q "kind"; then \
-			echo "kind"; \
-		else \
-			echo "not-kind"; \
-		fi \
-	else \
-		echo "not-kind"; \
-	fi
-
-load-kind: ## Load Docker image into kind cluster (if cluster is kind)
-	@if command -v kind > /dev/null 2>&1; then \
-		echo "$(BLUE)Checking if cluster is kind...$(NC)"; \
-		if ! kubectl cluster-info > /dev/null 2>&1; then \
-			echo "$(BLUE)No Kubernetes cluster accessible, skipping kind image load$(NC)"; \
-		else \
-			kind_cluster=""; \
-			context=$$(kubectl config current-context 2>/dev/null || echo ""); \
-			available_clusters=$$(kind get clusters 2>/dev/null || echo ""); \
-			if [ -z "$$available_clusters" ]; then \
-				echo "$(BLUE)No kind clusters found, skipping image load$(NC)"; \
-			else \
-				if [ -n "$$context" ] && echo "$$context" | grep -q "^kind-"; then \
-					context_cluster=$$(echo "$$context" | sed 's/^kind-//'); \
-					if echo "$$available_clusters" | grep -qw "$$context_cluster"; then \
-						kind_cluster="$$context_cluster"; \
-						echo "$(BLUE)Matched context to kind cluster: $$kind_cluster$(NC)"; \
-					fi; \
-				fi; \
-				if [ -z "$$kind_cluster" ]; then \
-					kind_cluster=$$(echo "$$available_clusters" | head -n1 | tr -d '[:space:]'); \
-					echo "$(BLUE)Using first available kind cluster: $$kind_cluster$(NC)"; \
-				fi; \
-				if [ -n "$$kind_cluster" ]; then \
-					echo "$(BLUE)Loading image $(IMAGE) into kind cluster: $$kind_cluster$(NC)"; \
-					if kind load docker-image $(IMAGE) --name $$kind_cluster; then \
-						echo "$(GREEN)✅ Image loaded into kind cluster: $$kind_cluster$(NC)"; \
-					else \
-						echo "$(RED)✗ Error: Failed to load image into kind cluster: $$kind_cluster$(NC)"; \
-						echo "$(BLUE)   Verify cluster is running: kind get clusters$(NC)"; \
-						echo "$(BLUE)   Check cluster nodes: kind get nodes --name $$kind_cluster$(NC)"; \
-					fi; \
-				fi; \
-			fi; \
-		fi \
-	else \
-		echo "$(BLUE)kind not installed, skipping image load$(NC)"; \
-	fi
+# ============================================================================
+# Deploy Commands
+# ============================================================================
 
 build: ## Build the Docker image (auto-tags with git commit SHA + -dirty if tree is dirty)
 	@echo "$(BLUE)Building Modal GitOps Operator Docker image...$(NC)"
@@ -253,17 +211,48 @@ uninstall: ## Uninstall the operator
 	@kubectl delete namespace $(NAMESPACE) --ignore-not-found=true
 	@echo "$(GREEN)✅ Modal operator uninstalled$(NC)"
 
-test: ## Test the operator (build image and verify)
-	@echo "$(BLUE)Running tests...$(NC)"
-	@$(MAKE) build
-	@echo "$(GREEN)✅ Tests passed$(NC)"
-
-clean: ## Clean up generated files
-	@echo "$(BLUE)Cleaning up...$(NC)"
-	@if [ -f manifests/deployment.yaml.bak ]; then \
-		mv manifests/deployment.yaml.bak manifests/deployment.yaml; \
-		echo "$(GREEN)✅ Restored original deployment.yaml$(NC)"; \
+load-kind: ## Load Docker image into kind cluster (if cluster is kind)
+	@if command -v kind > /dev/null 2>&1; then \
+		echo "$(BLUE)Checking if cluster is kind...$(NC)"; \
+		if ! kubectl cluster-info > /dev/null 2>&1; then \
+			echo "$(BLUE)No Kubernetes cluster accessible, skipping kind image load$(NC)"; \
+		else \
+			kind_cluster=""; \
+			context=$$(kubectl config current-context 2>/dev/null || echo ""); \
+			available_clusters=$$(kind get clusters 2>/dev/null || echo ""); \
+			if [ -z "$$available_clusters" ]; then \
+				echo "$(BLUE)No kind clusters found, skipping image load$(NC)"; \
+			else \
+				if [ -n "$$context" ] && echo "$$context" | grep -q "^kind-"; then \
+					context_cluster=$$(echo "$$context" | sed 's/^kind-//'); \
+					if echo "$$available_clusters" | grep -qw "$$context_cluster"; then \
+						kind_cluster="$$context_cluster"; \
+						echo "$(BLUE)Matched context to kind cluster: $$kind_cluster$(NC)"; \
+					fi; \
+				fi; \
+				if [ -z "$$kind_cluster" ]; then \
+					kind_cluster=$$(echo "$$available_clusters" | head -n1 | tr -d '[:space:]'); \
+					echo "$(BLUE)Using first available kind cluster: $$kind_cluster$(NC)"; \
+				fi; \
+				if [ -n "$$kind_cluster" ]; then \
+					echo "$(BLUE)Loading image $(IMAGE) into kind cluster: $$kind_cluster$(NC)"; \
+					if kind load docker-image $(IMAGE) --name $$kind_cluster; then \
+						echo "$(GREEN)✅ Image loaded into kind cluster: $$kind_cluster$(NC)"; \
+					else \
+						echo "$(RED)✗ Error: Failed to load image into kind cluster: $$kind_cluster$(NC)"; \
+						echo "$(BLUE)   Verify cluster is running: kind get clusters$(NC)"; \
+						echo "$(BLUE)   Check cluster nodes: kind get nodes --name $$kind_cluster$(NC)"; \
+					fi; \
+				fi; \
+			fi; \
+		fi \
+	else \
+		echo "$(BLUE)kind not installed, skipping image load$(NC)"; \
 	fi
+
+# ============================================================================
+# Develop Commands
+# ============================================================================
 
 lint: ## Run pre-commit hooks on all files (installs hooks automatically if not installed)
 	@if command -v pre-commit > /dev/null 2>&1; then \
@@ -279,3 +268,205 @@ lint: ## Run pre-commit hooks on all files (installs hooks automatically if not 
 		echo "$(BLUE)   Install it with: pip install pre-commit$(NC)"; \
 		exit 1; \
 	fi
+
+test: ## Test the operator (build image and verify)
+	@echo "$(BLUE)Running tests...$(NC)"
+	@$(MAKE) build
+	@echo "$(GREEN)✅ Tests passed$(NC)"
+
+test-examples: ## Apply example deployments and wait for them to become ready
+	@echo "$(BLUE)Testing example deployments...$(NC)"
+	@if ! command -v kubectl > /dev/null; then \
+		echo "$(RED)✗ Error: kubectl is required but not installed$(NC)"; \
+		exit 1; \
+	fi
+	@if ! kubectl cluster-info > /dev/null 2>&1; then \
+		echo "$(RED)✗ Error: Cannot access Kubernetes cluster$(NC)"; \
+		exit 1; \
+	fi
+	@# Define examples to test (file_path:deployment_name:optional)
+	@examples="examples/function-deployment.yaml:hello-world-function:false examples/modal-examples-hello-world.yaml:modal-hello-world:false examples/gpu-job-deployment.yaml:modal-gpu-hello-world:true"; \
+	for example in $$examples; do \
+		IFS=':' read -r example_file deployment_name optional <<< "$$example"; \
+		echo ""; \
+		echo "$(BLUE)==========================================$(NC)"; \
+		echo "$(BLUE)Testing: $$example_file$(NC)"; \
+		echo "$(BLUE)Deployment name: $$deployment_name$(NC)"; \
+		echo "$(BLUE)Optional: $$optional$(NC)"; \
+		echo "$(BLUE)==========================================$(NC)"; \
+		\
+		# Deploy the example \
+		echo "$(BLUE)Deploying $$example_file...$(NC)"; \
+		if kubectl apply -f "$$example_file"; then \
+			echo "$(GREEN)✅ Successfully applied $$example_file$(NC)"; \
+		else \
+			if [ "$$optional" = "true" ]; then \
+				echo "$(YELLOW)⚠️  Failed to apply $$example_file (optional test, continuing...)$(NC)"; \
+				continue; \
+			else \
+				echo "$(RED)✗ Failed to apply $$example_file$(NC)"; \
+				exit 1; \
+			fi; \
+		fi; \
+		\
+		# Wait for operator to process the deployment \
+		echo "$(BLUE)Waiting for deployment $$deployment_name to be processed by operator...$(NC)"; \
+		timeout=300; \
+		status_populated=false; \
+		for i in $$(seq 1 $$((timeout/5))); do \
+			if kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status}' 2>/dev/null | grep -q .; then \
+				echo "$(GREEN)Status field populated after $$((i * 5)) seconds$(NC)"; \
+				status_populated=true; \
+				break; \
+			fi; \
+			sleep 5; \
+		done; \
+		\
+		if [ "$$status_populated" = "false" ]; then \
+			if [ "$$optional" = "true" ]; then \
+				echo "$(YELLOW)⚠️  Status not populated for $$deployment_name (optional test, continuing...)$(NC)"; \
+				continue; \
+			else \
+				echo "$(RED)✗ Timeout waiting for status on $$deployment_name$(NC)"; \
+				exit 1; \
+			fi; \
+		fi; \
+		\
+		# Check deployment status \
+		status=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.phase}' 2>/dev/null || echo ""); \
+		echo "$(BLUE)Deployment status: $${status:-'Not set yet'}$(NC)"; \
+		\
+		# Check for Modal app ID in status \
+		modal_app_id=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo ""); \
+		if [ -n "$$modal_app_id" ]; then \
+			echo "$(GREEN)✅ Modal app ID found: $$modal_app_id$(NC)"; \
+		else \
+			echo "$(YELLOW)⚠️  Modal app ID not yet set (may be in progress)$(NC)"; \
+		fi; \
+		\
+		# Check for error conditions \
+		conditions=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.conditions}' 2>/dev/null || echo "[]"); \
+		echo "$(BLUE)Conditions: $$conditions$(NC)"; \
+		\
+		# Verify deployment exists \
+		kubectl get modaldeployment "$$deployment_name"; \
+		\
+		# For GPU test, also show full YAML \
+		if echo "$$example_file" | grep -q "gpu"; then \
+			echo "$(BLUE)GPU configuration details:$(NC)"; \
+			kubectl get modaldeployment "$$deployment_name" -o yaml; \
+		fi; \
+		\
+		echo "$(GREEN)✅ $$example_file test completed$(NC)"; \
+		echo ""; \
+	done
+	@echo "$(BLUE)==========================================$(NC)"
+	@echo "$(GREEN)✅ All example tests completed$(NC)"
+	@echo "$(BLUE)==========================================$(NC)"
+
+# ============================================================================
+# Utility Commands
+# ============================================================================
+
+check-kind: ## Check if current Kubernetes cluster is kind
+	@if command -v kubectl > /dev/null 2>&1 && kubectl cluster-info > /dev/null 2>&1; then \
+		context=$$(kubectl config current-context 2>/dev/null || echo ""); \
+		if [ -n "$$context" ] && echo "$$context" | grep -q "kind"; then \
+			echo "kind"; \
+		elif kubectl get nodes -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | grep -q "kind"; then \
+			echo "kind"; \
+		else \
+			echo "not-kind"; \
+		fi \
+	else \
+		echo "not-kind"; \
+	fi
+
+	@echo "$(BLUE)Testing example deployments...$(NC)"
+	@if ! command -v kubectl > /dev/null; then \
+		echo "$(RED)✗ Error: kubectl is required but not installed$(NC)"; \
+		exit 1; \
+	fi
+	@if ! kubectl cluster-info > /dev/null 2>&1; then \
+		echo "$(RED)✗ Error: Cannot access Kubernetes cluster$(NC)"; \
+		exit 1; \
+	fi
+	@# Define examples to test (file_path:deployment_name:optional)
+	@examples="examples/function-deployment.yaml:hello-world-function:false examples/modal-examples-hello-world.yaml:modal-hello-world:false examples/gpu-job-deployment.yaml:modal-gpu-hello-world:true"; \
+	for example in $$examples; do \
+		IFS=':' read -r example_file deployment_name optional <<< "$$example"; \
+		echo ""; \
+		echo "$(BLUE)==========================================$(NC)"; \
+		echo "$(BLUE)Testing: $$example_file$(NC)"; \
+		echo "$(BLUE)Deployment name: $$deployment_name$(NC)"; \
+		echo "$(BLUE)Optional: $$optional$(NC)"; \
+		echo "$(BLUE)==========================================$(NC)"; \
+		\
+		# Deploy the example \
+		echo "$(BLUE)Deploying $$example_file...$(NC)"; \
+		if kubectl apply -f "$$example_file"; then \
+			echo "$(GREEN)✅ Successfully applied $$example_file$(NC)"; \
+		else \
+			if [ "$$optional" = "true" ]; then \
+				echo "$(YELLOW)⚠️  Failed to apply $$example_file (optional test, continuing...)$(NC)"; \
+				continue; \
+			else \
+				echo "$(RED)✗ Failed to apply $$example_file$(NC)"; \
+				exit 1; \
+			fi; \
+		fi; \
+		\
+		# Wait for operator to process the deployment \
+		echo "$(BLUE)Waiting for deployment $$deployment_name to be processed by operator...$(NC)"; \
+		timeout=300; \
+		status_populated=false; \
+		for i in $$(seq 1 $$((timeout/5))); do \
+			if kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status}' 2>/dev/null | grep -q .; then \
+				echo "$(GREEN)Status field populated after $$((i * 5)) seconds$(NC)"; \
+				status_populated=true; \
+				break; \
+			fi; \
+			sleep 5; \
+		done; \
+		\
+		if [ "$$status_populated" = "false" ]; then \
+			if [ "$$optional" = "true" ]; then \
+				echo "$(YELLOW)⚠️  Status not populated for $$deployment_name (optional test, continuing...)$(NC)"; \
+				continue; \
+			else \
+				echo "$(RED)✗ Timeout waiting for status on $$deployment_name$(NC)"; \
+				exit 1; \
+			fi; \
+		fi; \
+		\
+		# Check deployment status \
+		status=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.phase}' 2>/dev/null || echo ""); \
+		echo "$(BLUE)Deployment status: $${status:-'Not set yet'}$(NC)"; \
+		\
+		# Check for Modal app ID in status \
+		modal_app_id=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo ""); \
+		if [ -n "$$modal_app_id" ]; then \
+			echo "$(GREEN)✅ Modal app ID found: $$modal_app_id$(NC)"; \
+		else \
+			echo "$(YELLOW)⚠️  Modal app ID not yet set (may be in progress)$(NC)"; \
+		fi; \
+		\
+		# Check for error conditions \
+		conditions=$$(kubectl get modaldeployment "$$deployment_name" -o jsonpath='{.status.conditions}' 2>/dev/null || echo "[]"); \
+		echo "$(BLUE)Conditions: $$conditions$(NC)"; \
+		\
+		# Verify deployment exists \
+		kubectl get modaldeployment "$$deployment_name"; \
+		\
+		# For GPU test, also show full YAML \
+		if echo "$$example_file" | grep -q "gpu"; then \
+			echo "$(BLUE)GPU configuration details:$(NC)"; \
+			kubectl get modaldeployment "$$deployment_name" -o yaml; \
+		fi; \
+		\
+		echo "$(GREEN)✅ $$example_file test completed$(NC)"; \
+		echo ""; \
+	done
+	@echo "$(BLUE)==========================================$(NC)"
+	@echo "$(GREEN)✅ All example tests completed$(NC)"
+	@echo "$(BLUE)==========================================$(NC)"

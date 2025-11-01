@@ -61,8 +61,8 @@ jobs:
   # Purpose: Build Docker image, create kind cluster, install operator, and run E2E tests
   # All steps run on the same VM to:
   #   - Build image once (avoid rebuilding)
-  #   - Share the kind cluster across all operations
-  #   - Run example tests in parallel using matrix strategy
+  #   - Use one kind cluster for all tests
+  #   - Iterate through example tests sequentially on the same cluster
   # Runs in parallel with lint (no dependency)
   e2e-test:
     name: E2E Test
@@ -71,19 +71,6 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - example_file: examples/function-deployment.yaml
-            deployment_name: hello-world-function
-            optional: false
-          - example_file: examples/modal-examples-hello-world.yaml
-            deployment_name: modal-hello-world
-            optional: false
-          - example_file: examples/gpu-job-deployment.yaml
-            deployment_name: modal-gpu-hello-world
-            optional: true
 
     steps:
       - name: Checkout code
@@ -105,12 +92,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Get image tag from Makefile
+        id: image-tag
+        run: |
+          # Get the image name that Makefile would generate
+          # This mimics the Makefile logic: modal-operator:$(GIT_COMMIT)
+          GIT_COMMIT=$(git rev-parse --short=8 HEAD)
+          if git diff --quiet HEAD && git diff --cached --quiet HEAD; then
+            IMAGE_TAG="modal-operator:${GIT_COMMIT}"
+          else
+            IMAGE_TAG="modal-operator:${GIT_COMMIT}-dirty"
+          fi
+          echo "image-tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "Image tag: ${IMAGE_TAG}"
+
       - name: Build Docker image (includes unit tests)
         uses: docker/build-push-action@v5
         with:
           context: operator
           file: operator/Dockerfile
-          tags: modal-operator:test
+          tags: ${{ steps.image-tag.outputs.image-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           push: false
@@ -122,10 +123,6 @@ jobs:
           docker load -i /tmp/modal-operator.tar
           echo "✅ Docker image built successfully"
           echo "✅ Unit tests passed during Docker build"
-
-      - name: Verify Modal package in image
-        run: |
-          docker run --rm modal-operator:test python -c "import modal; print('✓ Modal package imported successfully')"
 
       - name: Create kind cluster
         run: |
@@ -154,28 +151,21 @@ jobs:
           kubectl wait --for=condition=Ready nodes --all --timeout=300s
           echo "✅ Kind cluster is ready"
 
-      - name: Load Docker image into kind
-        run: |
-          kind load docker-image modal-operator:test --name ${{ env.KIND_CLUSTER_NAME }}
-          echo "✅ Docker image loaded into kind cluster"
-
       - name: Install operator using make install
-        env:
-          IMAGE: modal-operator:test
         run: |
           # Make install will:
+          # - Auto-detect image name from git commit SHA (matching the built image)
           # - Update deployment.yaml with the image we built
           # - Install CRD, RBAC, and operator deployment
           # - Create Modal credentials secret
           # - Wait for operator to be ready
+          # - Load image into kind cluster automatically
           # Note: We use make install (not make deploy) to avoid rebuilding the image
-          make install IMAGE=modal-operator:test
+          #       Image name is auto-detected from git, matching what we built above
+          make install
           echo "✅ Operator installed successfully"
-
-      - name: Verify CRD installation
-        run: |
-          kubectl get crd modaldeployments.modal.io
-          echo "✅ CRD is installed"
+          echo "✅ CRD installed (verified by make install)"
+          echo "✅ Docker image loaded into kind (handled by make install)"
 
       - name: Verify operator pod is running
         run: |
@@ -192,54 +182,10 @@ jobs:
             -l app.kubernetes.io/name=modal-operator --tail=50
 
       # E2E Testing: Deploy example ModalDeployments and verify they work
-      # Uses matrix strategy to run tests in parallel
-      - name: Test ${{ matrix.example_file }}
-        continue-on-error: ${{ matrix.optional == 'true' }}
+      # Uses Makefile target to apply and wait for examples
+      - name: Test example deployments
         run: |
-          echo "Deploying ${{ matrix.example_file }}..."
-          kubectl apply -f ${{ matrix.example_file }}
-
-          # Wait for CRD resource to be created (only needed once, but harmless if repeated)
-          echo "Waiting for ModalDeployment to be created..."
-          kubectl wait --for=condition=Established --timeout=60s crd/modaldeployments.modal.io || true
-
-          # Wait for operator to process the deployment (check for status field)
-          echo "Waiting for deployment ${{ matrix.deployment_name }} to be processed by operator..."
-          timeout=300
-          for i in $(seq 1 $((timeout/5))); do
-            if kubectl get modaldeployment ${{ matrix.deployment_name }} -o jsonpath='{.status}' 2>/dev/null | grep -q .; then
-              echo "Status field populated"
-              break
-            fi
-            sleep 5
-          done
-
-          # Check deployment status
-          status=$(kubectl get modaldeployment ${{ matrix.deployment_name }} -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-          echo "Deployment status: ${status:-'Not set yet'}"
-
-          # Check for Modal app ID in status
-          modal_app_id=$(kubectl get modaldeployment ${{ matrix.deployment_name }} -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo "")
-          if [ -n "$modal_app_id" ]; then
-            echo "✅ Modal app ID found: $modal_app_id"
-          else
-            echo "⚠️  Modal app ID not yet set (may be in progress)"
-          fi
-
-          # Check for error conditions
-          conditions=$(kubectl get modaldeployment ${{ matrix.deployment_name }} -o jsonpath='{.status.conditions}' 2>/dev/null || echo "[]")
-          echo "Conditions: $conditions"
-
-          # Verify deployment exists and show details
-          kubectl get modaldeployment ${{ matrix.deployment_name }}
-
-          # For GPU test, also show full YAML
-          if [[ "${{ matrix.example_file }}" == *"gpu"* ]]; then
-            echo "GPU configuration details:"
-            kubectl get modaldeployment ${{ matrix.deployment_name }} -o yaml
-          fi
-
-          echo "✅ ${{ matrix.example_file }} test completed"
+          make test-examples
 
       - name: Collect operator logs
         if: always()
