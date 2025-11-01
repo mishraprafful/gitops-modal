@@ -11,4 +11,3 @@ resources:
 # for your environment. It is not included by default.
 # To use it, create your own secret or uncomment and customize:
 # - secrets-template.yaml
-

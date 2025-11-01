@@ -35,25 +35,28 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
 [kind](https://kind.sigs.k8s.io/) is the recommended way to test this operator locally. The Makefile automatically detects kind clusters and loads images for you.
 
 1. **Set up a kind cluster:**
+
    ```bash
    # Install kind (if not already installed)
    # macOS: brew install kind
    # Linux: See https://kind.sigs.k8s.io/docs/user/quick-start/#installation
-   
+
    # Create a kind cluster
    kind create cluster --name modal-test
-   
+
    # Verify cluster is running
    kubectl cluster-info --context kind-modal-test
    ```
 
 2. **Clone the repository:**
+
    ```bash
    git clone https://github.com/your-org/gitops-modal
    cd gitops-modal
    ```
 
 3. **Set up Modal credentials (optional - can use .env file):**
+
    ```bash
    # Create .env file with your Modal credentials
    cat > .env << EOF
@@ -63,16 +66,18 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
    ```
 
 4. **Build and install:**
+
    ```bash
    # Option 1: Build and install in one command (recommended)
    make deploy
-   
+
    # Option 2: Build and install separately
    make build
    make install
    ```
 
 The Makefile will automatically:
+
 - Detect if you're using a kind cluster
 - Load the Docker image into kind (no need to push to a registry!)
 - Install the operator with the correct image
@@ -82,32 +87,36 @@ The Makefile will automatically:
 For non-kind clusters, you'll need to push your image to a container registry:
 
 1. **Build the operator image:**
+
    ```bash
    # Build with custom image name (include your registry)
    make build IMAGE=your-registry.io/modal-operator:v1.0.0
-   
+
    # Push to registry
    docker push your-registry.io/modal-operator:v1.0.0
    ```
 
 2. **Install the operator:**
+
    ```bash
    # Install with your image and Modal credentials
    make install IMAGE=your-registry.io/modal-operator:v1.0.0 \
      MODAL_TOKEN_ID="your-token-id" \
      MODAL_TOKEN_SECRET="your-token-secret"
-   
+
    # Or use .env file for credentials
    make install IMAGE=your-registry.io/modal-operator:v1.0.0
    ```
 
 4. **Verify installation:**
+
    ```bash
    kubectl get modaldeployments
    kubectl get pods -n modal-system
    ```
 
 5. **Uninstall (if needed):**
+
    ```bash
    make uninstall
    ```
@@ -119,6 +128,7 @@ For non-kind clusters, you'll need to push your image to a container registry:
 ### Deploy Your First Modal App
 
 1. **Create a simple function deployment:**
+
    ```yaml
    apiVersion: modal.io/v1
    kind: ModalDeployment
@@ -140,17 +150,20 @@ For non-kind clusters, you'll need to push your image to a container registry:
    ```
 
 2. **Apply the deployment:**
+
    ```bash
    kubectl apply -f your-deployment.yaml
    ```
 
 3. **Check status:**
+
    ```bash
    kubectl get modaldeployment hello-world
    kubectl describe modaldeployment hello-world
    ```
 
 4. **Update the deployment:**
+
    ```bash
    # Edit the YAML file and reapply
    kubectl edit modaldeployment hello-world
@@ -159,6 +172,7 @@ For non-kind clusters, you'll need to push your image to a container registry:
    ```
 
 5. **Delete the deployment:**
+
    ```bash
    kubectl delete modaldeployment hello-world
    # The operator will automatically stop the Modal app
@@ -183,6 +197,7 @@ For non-kind clusters, you'll need to push your image to a container registry:
 ### Source Configuration
 
 #### Git Source
+
 ```yaml
 source:
   git:
@@ -193,6 +208,7 @@ source:
 ```
 
 #### Container Image Source
+
 ```yaml
 source:
   image:
@@ -206,6 +222,7 @@ source:
 Configure environment variables and secrets for your Modal applications.
 
 **Priority Order (highest to lowest):**
+
 1. Kubernetes secrets
 2. Explicit `variables` in YAML
 3. Default values
@@ -235,6 +252,7 @@ compute:
 ```
 
 **Supported GPU Types:**
+
 - `T4` - NVIDIA T4 GPU
 - `L4` - NVIDIA L4 GPU
 - `A10` - NVIDIA A10 GPU
@@ -409,6 +427,7 @@ kubectl apply -k kustomize/overlays/production
 ```
 
 The base `manifests/kustomization.yaml` includes all common resources. Overlays can customize:
+
 - Image tags and registries
 - Resource limits and requests
 - Replica counts
@@ -420,6 +439,7 @@ See [kustomize/README.md](kustomize/README.md) for more details on creating cust
 ### ArgoCD Integration
 
 1. **Create ArgoCD Application:**
+
    ```yaml
    apiVersion: argoproj.io/v1alpha1
    kind: Application
@@ -439,6 +459,7 @@ See [kustomize/README.md](kustomize/README.md) for more details on creating cust
    ```
 
 2. **Directory structure:**
+
    ```
    modal-configs/
    ├── deployments/
@@ -476,23 +497,29 @@ spec:
 The operator supports the full lifecycle of Modal deployments:
 
 **Create:**
+
 ```bash
 kubectl apply -f deployment.yaml
 ```
 
 **Update:**
+
 ```bash
 # Edit the YAML and reapply, or use kubectl edit
 kubectl edit modaldeployment my-app
 kubectl apply -f updated-deployment.yaml
 ```
+
 The operator automatically detects changes and redeploys to Modal. Modal handles versioning internally, so updates to the same app name will update the existing deployment.
 
 **Delete:**
+
 ```bash
 kubectl delete modaldeployment my-app
 ```
+
 The operator will:
+
 - Retrieve the Modal app ID from the CRD status (persists across operator restarts)
 - Stop the Modal app using `modal app stop`
 - Clean up local resources
@@ -503,6 +530,7 @@ The operator will:
 ### Status Monitoring
 
 Check deployment status:
+
 ```bash
 # List all deployments with status
 kubectl get modaldeployments
@@ -518,6 +546,7 @@ kubectl get modaldeployment my-app -o jsonpath='{.status}'
 ```
 
 **Status Fields:**
+
 - `phase`: Current phase (Deploying, Ready, Failed, Terminating)
 - `modalAppId`: Modal app identifier (stored for reliable deletion)
 - `url`: Modal app webhook URL (if webhooks enabled)
@@ -543,6 +572,7 @@ The operator exposes Prometheus metrics on port 8080:
 - `modal_deployment_reconcile_duration` - Time spent reconciling deployments
 
 Example Prometheus configuration:
+
 ```yaml
 - job_name: 'modal-operator'
   kubernetes_sd_configs:
@@ -560,6 +590,7 @@ Example Prometheus configuration:
 ### Common Issues
 
 1. **Modal credentials not found**
+
    ```bash
    # Set as environment variables in the operator deployment
    kubectl create secret generic modal-credentials \
@@ -590,12 +621,14 @@ Example Prometheus configuration:
    - Note: Deletion continues even if Modal cleanup fails (non-blocking)
 
 6. **Operator pod crash loop**
+
    ```bash
    kubectl logs -n modal-system -l app.kubernetes.io/name=modal-operator
    kubectl describe pod -n modal-system -l app.kubernetes.io/name=modal-operator
    ```
 
 7. **CRD not found**
+
    ```bash
    kubectl apply -f crds/modaldeployment-crd.yaml
    ```
@@ -630,6 +663,7 @@ For more advanced debugging and development troubleshooting, see [DEVELOPMENT.md
 For development setup, building, testing, architecture details, and contributing guidelines, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 **Quick start for developers:**
+
 - Use [kind](https://kind.sigs.k8s.io/) for local development (recommended)
 - Run `make deploy` to build and install in one step
 - Images are automatically tagged with git commit SHA

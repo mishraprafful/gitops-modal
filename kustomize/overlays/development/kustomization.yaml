@@ -14,4 +14,3 @@ patchesStrategicMerge:
 # Common labels for development
 commonLabels:
   environment: development
-

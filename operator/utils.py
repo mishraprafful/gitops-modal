@@ -7,7 +7,6 @@ from datetime import datetime
 def setup_logging():
     """Set up logging configuration for the operator"""
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    log_format = os.getenv("LOG_FORMAT", "json")
 
     # Configure root logger
     logging.basicConfig(
@@ -102,7 +101,7 @@ def is_valid_cron_expression(cron_expr):
 
         croniter(cron_expr)
         return True
-    except:
+    except Exception:
         return False
 
 

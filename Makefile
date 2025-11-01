@@ -27,7 +27,7 @@ ifneq (,$(wildcard .env))
 endif
 
 # Modal credentials - can be set via .env file, environment variables, or make arguments
-MODAL_TOKEN_ID ?= 
+MODAL_TOKEN_ID ?=
 MODAL_TOKEN_SECRET ?=
 
 # Colors for output
@@ -165,29 +165,29 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 		echo "$(GREEN)✓ Loaded secrets from .env file$(NC)"; \
 	fi
 	@echo ""
-	
+
 	@# Check prerequisites
 	@if ! command -v kubectl > /dev/null; then \
 		echo "$(RED)✗ Error: kubectl is required but not installed$(NC)"; \
 		exit 1; \
 	fi
-	
+
 	@if ! kubectl cluster-info > /dev/null 2>&1; then \
 		echo "$(RED)✗ Error: Cannot access Kubernetes cluster$(NC)"; \
 		exit 1; \
 	fi
 	@# Check if kind cluster and load image if needed
 	@$(MAKE) load-kind
-	
+
 	@# Create namespace
 	@echo "$(BLUE)Creating namespace $(NAMESPACE)...$(NC)"
 	@kubectl create namespace $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
-	
+
 	@# Install CRD
 	@echo "$(BLUE)Installing ModalDeployment CRD...$(NC)"
 	@kubectl apply -f crds/modaldeployment-crd.yaml
 	@kubectl wait --for condition=established --timeout=60s crd/modaldeployments.modal.io || true
-	
+
 	@# Create Modal credentials secret if provided
 	@if [ -n "$(MODAL_TOKEN_ID)" ] && [ -n "$(MODAL_TOKEN_SECRET)" ]; then \
 		echo "$(BLUE)Creating Modal credentials secret...$(NC)"; \
@@ -205,26 +205,26 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 		echo "     --from-literal=token-id=YOUR_TOKEN_ID \\"; \
 		echo "     --from-literal=token-secret=YOUR_TOKEN_SECRET"; \
 	fi
-	
+
 	@# Install RBAC
 	@echo "$(BLUE)Installing RBAC resources...$(NC)"
 	@kubectl apply -f manifests/rbac.yaml
-	
+
 	@# Install operator deployment
 	@echo "$(BLUE)Installing operator deployment...$(NC)"
 	@kubectl apply -f manifests/deployment.yaml
-	
+
 	@# WATCH_NAMESPACE is already set in deployment.yaml by update-image target
 	@if [ -z "$(WATCH_NAMESPACE)" ]; then \
 		echo "$(BLUE)WATCH_NAMESPACE is empty - operator will watch all namespaces$(NC)"; \
 	else \
 		echo "$(BLUE)WATCH_NAMESPACE is set to: $(WATCH_NAMESPACE)$(NC)"; \
 	fi
-	
+
 	@# Wait for operator to be ready
 	@echo "$(BLUE)Waiting for operator to be ready...$(NC)"
 	@kubectl wait --for=condition=available --timeout=300s deployment/modal-operator -n $(NAMESPACE) || true
-	
+
 	@# Verify installation
 	@echo ""
 	@echo "$(BLUE)Verifying installation...$(NC)"
@@ -237,7 +237,7 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 	@kubectl get pods -n $(NAMESPACE) -l app.kubernetes.io/name=modal-operator | grep -q Running && \
 		echo "$(GREEN)✅ Operator pod is running$(NC)" || \
 		echo "$(YELLOW)⚠ Operator pod is not running yet$(NC)"
-	
+
 	@echo ""
 	@echo "$(GREEN)✅ Installation completed!$(NC)"
 	@echo ""
@@ -279,4 +279,3 @@ lint: ## Run pre-commit hooks on all files (installs hooks automatically if not 
 		echo "$(BLUE)   Install it with: pip install pre-commit$(NC)"; \
 		exit 1; \
 	fi
-

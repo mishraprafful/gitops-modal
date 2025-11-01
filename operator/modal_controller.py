@@ -1,19 +1,14 @@
 import logging
-import sys
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import tempfile
 import os
-import subprocess
 import asyncio
 
 import modal
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 import git
-import yaml
-from croniter import croniter
-from pydantic import BaseModel, ValidationError
 
 
 logger = logging.getLogger(__name__)
@@ -143,7 +138,7 @@ class ModalController:
         except Exception as e:
             logger.error(f"Failed to delete {name}: {e}")
             # Don't raise - allow deletion to proceed even if Modal cleanup fails
-            logger.warning(f"Continuing with deletion despite Modal cleanup error")
+            logger.warning("Continuing with deletion despite Modal cleanup error")
 
     async def update_status(
         self,
@@ -780,7 +775,7 @@ def hello():
     return {{"message": "Hello from Modal GitOps!", "app": "{app_name}"}}
 
 @app.function({decorator_args_str})
-@modal.web_endpoint(method="POST")  
+@modal.web_endpoint(method="POST")
 def echo(request_data: dict):
     """Echo endpoint for POST requests"""
     return {{"echo": request_data, "app": "{app_name}"}}

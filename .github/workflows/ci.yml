@@ -32,7 +32,7 @@ jobs:
     name: Docker Build and Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -216,7 +216,7 @@ jobs:
         run: |
           echo "Deploying function-deployment.yaml..."
           kubectl apply -f examples/function-deployment.yaml
-          
+
           # Wait for CRD to have status
           echo "Waiting for deployment to be processed..."
           timeout=300
@@ -230,7 +230,7 @@ jobs:
             sleep 5
             elapsed=$((elapsed + 5))
           done
-          
+
           # Check for Modal app ID in status
           modal_app_id=$(kubectl get modaldeployment hello-world-function -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo "")
           if [ -n "$modal_app_id" ]; then
@@ -238,11 +238,11 @@ jobs:
           else
             echo "⚠️  Modal app ID not yet set (may be in progress)"
           fi
-          
+
           # Check for error conditions
           conditions=$(kubectl get modaldeployment hello-world-function -o jsonpath='{.status.conditions}' 2>/dev/null || echo "[]")
           echo "Conditions: $conditions"
-          
+
           # Verify deployment exists
           kubectl get modaldeployment hello-world-function
           echo "✅ function-deployment.yaml test completed"
@@ -254,7 +254,7 @@ jobs:
         run: |
           echo "Deploying modal-examples-hello-world.yaml..."
           kubectl apply -f examples/modal-examples-hello-world.yaml
-          
+
           # Wait for CRD to have status
           echo "Waiting for deployment to be processed..."
           timeout=300
@@ -268,7 +268,7 @@ jobs:
             sleep 5
             elapsed=$((elapsed + 5))
           done
-          
+
           # Check for Modal app ID in status
           modal_app_id=$(kubectl get modaldeployment modal-hello-world -o jsonpath='{.status.modalAppId}' 2>/dev/null || echo "")
           if [ -n "$modal_app_id" ]; then
@@ -276,7 +276,7 @@ jobs:
           else
             echo "⚠️  Modal app ID not yet set (may be in progress)"
           fi
-          
+
           # Verify deployment exists
           kubectl get modaldeployment modal-hello-world
           echo "✅ modal-examples-hello-world.yaml test completed"
@@ -289,7 +289,7 @@ jobs:
         run: |
           echo "Deploying gpu-job-deployment.yaml..."
           kubectl apply -f examples/gpu-job-deployment.yaml
-          
+
           # Wait for CRD to have status
           echo "Waiting for deployment to be processed..."
           timeout=300
@@ -303,7 +303,7 @@ jobs:
             sleep 5
             elapsed=$((elapsed + 5))
           done
-          
+
           # Verify GPU configuration in status or logs
           kubectl get modaldeployment modal-gpu-hello-world -o yaml
           echo "✅ gpu-job-deployment.yaml test completed"
@@ -315,7 +315,7 @@ jobs:
           echo "Collecting operator logs..."
           kubectl logs -n ${{ env.OPERATOR_NAMESPACE }} \
             -l app.kubernetes.io/name=modal-operator --tail=100 > operator-logs.txt
-          
+
           echo "Collecting all ModalDeployment resources..."
           kubectl get modaldeployments -o yaml > all-deployments.yaml
 
@@ -360,7 +360,7 @@ jobs:
           if kind get clusters | grep -q "${{ env.KIND_CLUSTER_NAME }}"; then
             kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > /tmp/kubeconfig 2>/dev/null || true
             export KUBECONFIG=/tmp/kubeconfig
-            
+
             kubectl delete modaldeployment hello-world-function --ignore-not-found=true || true
             kubectl delete modaldeployment modal-hello-world --ignore-not-found=true || true
             kubectl delete modaldeployment modal-gpu-hello-world --ignore-not-found=true || true
@@ -376,4 +376,3 @@ jobs:
           else
             echo "Cluster already deleted or doesn't exist"
           fi
-

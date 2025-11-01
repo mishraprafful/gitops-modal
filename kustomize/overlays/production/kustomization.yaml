@@ -14,4 +14,3 @@ patchesStrategicMerge:
 # Common labels for production
 commonLabels:
   environment: production
-

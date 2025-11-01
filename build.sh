@@ -29,7 +29,7 @@ print('✓ Modal package imported successfully')
 
 try:
     # Test Modal CLI
-    result = subprocess.run(['python', '-c', 'import modal; print(\"Modal CLI ready\")'], 
+    result = subprocess.run(['python', '-c', 'import modal; print(\"Modal CLI ready\")'],
                           capture_output=True, text=True)
     if result.returncode == 0:
         print('✓ Modal CLI available')

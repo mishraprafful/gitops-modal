@@ -33,10 +33,8 @@ rules:
   # Key ordering - disable to allow flexible ordering
   key-ordering: disable
 
-  # Quoted strings - be lenient with quotes
-  quoted-strings:
-    required: only-when-needed
-    extra-allowed: ['^!', '^&', '^*', '^|', '^>', '^%', '^@']
+  # Quoted strings - disable strict checking (Kubernetes YAML often uses quotes for consistency)
+  quoted-strings: disable
 
   # Braces - allow braces in values (used in Kubernetes templating)
   braces:
@@ -62,6 +60,6 @@ rules:
   # Comments indentation - allow comments at any indentation
   comments-indentation: disable
 
-  # Truthy values - allow yes/no/on/off as they're valid in some contexts
+  # Truthy values - allow yes/no/on/off as they're valid in some contexts (including GitHub Actions)
   truthy:
-    allowed-values: ['true', 'false', 'True', 'False', 'TRUE', 'FALSE']
+    allowed-values: ['true', 'false', 'True', 'False', 'TRUE', 'FALSE', 'on', 'off', 'yes', 'no']

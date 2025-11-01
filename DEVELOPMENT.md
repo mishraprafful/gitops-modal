@@ -61,6 +61,7 @@ pre-commit autoupdate
 [kind](https://kind.sigs.k8s.io/) is the recommended way to develop and test this operator locally. The Makefile automatically detects kind clusters and loads images for you.
 
 **Benefits of using kind:**
+
 - ✅ No container registry needed - images load directly into the cluster
 - ✅ Fast iteration - rebuild and reload in seconds
 - ✅ Isolated testing environment
@@ -70,27 +71,30 @@ pre-commit autoupdate
 ### Setup Steps
 
 1. **Install kind:**
+
    ```bash
    # macOS
    brew install kind
-   
+
    # Linux - see https://kind.sigs.k8s.io/docs/user/quick-start/#installation
    ```
 
 2. **Create a kind cluster:**
+
    ```bash
    kind create cluster --name modal-dev
-   
+
    # Verify cluster is running
    kubectl cluster-info --context kind-modal-dev
    ```
 
 3. **Set up environment:**
+
    ```bash
    # Clone repository
    git clone https://github.com/your-org/gitops-modal
    cd gitops-modal
-   
+
    # Create .env file with Modal credentials (optional)
    cat > .env << EOF
    MODAL_TOKEN_ID=your-modal-token-id
@@ -99,6 +103,7 @@ pre-commit autoupdate
    ```
 
 4. **Build and deploy:**
+
    ```bash
    make deploy
    ```
@@ -108,6 +113,7 @@ pre-commit autoupdate
 ### Automatic Image Tagging
 
 The Makefile automatically tags images with git commit SHA:
+
 - Clean git tree: `modal-operator:abc12345`
 - Dirty git tree: `modal-operator:abc12345-dirty`
 - Not in git: `modal-operator:latest`
@@ -135,6 +141,7 @@ make help
 ### Build Process
 
 The build process:
+
 1. Builds Docker image with all dependencies
 2. Runs tests (`test_modal.py` and `test_gpu_config.py`) - build fails if tests fail
 3. Creates operator user with proper permissions
@@ -163,6 +170,7 @@ python main.py
 ```
 
 **Note:** When running locally, the operator will use your local `kubectl` context. Make sure you have:
+
 - Valid kubectl configuration
 - Access to a Kubernetes cluster
 - CRD installed: `kubectl apply -f ../crds/modaldeployment-crd.yaml`
@@ -172,6 +180,7 @@ python main.py
 ### Running Tests During Build
 
 Tests are automatically run during Docker build. If any test fails, the build will fail:
+
 - `test_modal.py` - Tests Modal package import and basic functionality
 - `test_gpu_config.py` - Tests GPU configuration parsing and Modal app script generation
 
@@ -277,6 +286,7 @@ kubectl delete -f examples/function-deployment.yaml
 - Keep functions focused and small
 
 **Code formatting is enforced by pre-commit hooks:**
+
 - Python code is automatically formatted with `black` and linted with `ruff`
 - YAML files are linted with `yamllint` (configured for Kubernetes manifests)
 - Markdown files are linted with `markdownlint-cli2`
@@ -353,13 +363,14 @@ kubectl apply -f examples/function-deployment.yaml
 ### Common Development Issues
 
 1. **Image not loading into kind:**
+
    ```bash
    # Verify kind cluster
    kind get clusters
-   
+
    # Check cluster name matches context
    kubectl config current-context
-   
+
    # Manually load image
    make load-kind
    ```
@@ -408,6 +419,7 @@ make install MODAL_TOKEN_ID=xxx MODAL_TOKEN_SECRET=yyy
 ### Build Process
 
 The Dockerfile builds a Python-based image that:
+
 - Installs system dependencies (git, curl) and Python packages
 - Runs tests during build (build fails if tests fail)
 - Sets up non-root operator user with proper permissions
@@ -432,4 +444,3 @@ The Dockerfile builds a Python-based image that:
 - Proper file permissions
 - No unnecessary capabilities
 - Read-only root filesystem disabled (Modal CLI needs to write config)
-

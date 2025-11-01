@@ -11,24 +11,28 @@ This directory contains Kustomize overlays for deploying the Modal operator in d
 ## Usage
 
 ### Base Installation (using manifests directly)
+
 ```bash
 # Install from base manifests
 kubectl apply -k manifests/
 ```
 
 ### Development Environment
+
 ```bash
 # Install with development overrides (lower resources, DEBUG logging)
 kubectl apply -k overlays/development
 ```
 
 ### Production Environment  
+
 ```bash
 # Install with production overrides (HA, higher resources, INFO logging)
 kubectl apply -k overlays/production
 ```
 
 ### Custom Configuration
+
 ```bash
 # Create your own overlay
 mkdir -p overlays/my-env

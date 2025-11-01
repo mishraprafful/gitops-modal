@@ -44,4 +44,3 @@ README*
 # Tests are run during Docker build, so they must be included
 # .pytest_cache/
 # coverage/
-

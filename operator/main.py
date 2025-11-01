@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 
-import asyncio
 import logging
 import os
 import sys
 from typing import Dict, Any
 
 import kopf
-import modal
 from kubernetes import client, config
-from kubernetes.client.rest import ApiException
 
 from modal_controller import ModalController
 from utils import setup_logging
@@ -38,7 +35,6 @@ try:
     if os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"):
         # Modal client is initialized automatically when imported
         # We just need to ensure credentials are available
-        import modal
 
         logger.info("Modal client initialized successfully")
         modal_client = None  # Will be initialized per-operation
