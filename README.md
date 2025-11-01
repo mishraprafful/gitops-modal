@@ -114,6 +114,8 @@ For non-kind clusters, you'll need to push your image to a container registry:
 
 **Note:** The `make install` command automatically updates the image name in `manifests/deployment.yaml` to match the image you built. This ensures the deployment uses your built image.
 
+**For development:** See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development setup, building, testing, and contribution guidelines.
+
 ### Deploy Your First Modal App
 
 1. **Create a simple function deployment:**
@@ -621,108 +623,17 @@ kubectl get modaldeployments -o wide
 kubectl describe modaldeployment <name>
 ```
 
+For more advanced debugging and development troubleshooting, see [DEVELOPMENT.md](DEVELOPMENT.md#debugging).
+
 ## Development
 
-### Local Development with kind
+For development setup, building, testing, architecture details, and contributing guidelines, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
-For local development and testing, we recommend using [kind](https://kind.sigs.k8s.io/):
-
-```bash
-# Create a kind cluster
-kind create cluster --name modal-dev
-
-# Set kubectl context to kind
-kubectl cluster-info --context kind-modal-dev
-
-# Build and install (images automatically load into kind)
-make build install
-```
-
-**Benefits of using kind:**
-- ✅ No container registry needed - images load directly into the cluster
-- ✅ Fast iteration - rebuild and reload in seconds
-- ✅ Isolated testing environment
-- ✅ Easy cleanup - just delete the cluster
-- ✅ Automatic image loading - the Makefile handles it for you
-
-### Building the Operator
-
-```bash
-# Build and test Docker image (recommended)
-# Automatically loads into kind if detected
-make build
-
-# Build with custom image name
-make build IMAGE=your-registry/modal-operator:v1.0.0
-
-# Build and install in one go
-make deploy
-
-# Manually load image into kind (if needed)
-make load-kind
-
-# Show all available make targets
-make help
-
-# Run locally (for development)
-cd operator
-pip install -r requirements.txt
-export MODAL_TOKEN_ID="your-token"
-export MODAL_TOKEN_SECRET="your-secret"
-python setup_modal.py  # Setup Modal CLI
-python main.py          # Start operator
-```
-
-**Docker Image Features:**
-
-- ✅ Modal CLI pre-installed and configured
-- ✅ Git support for repository cloning  
-- ✅ Proper user permissions and security
-- ✅ Automatic Modal authentication setup
-- ✅ Health checks and error handling
-
-### How It Works
-
-**Deployment Flow:**
-1. Operator watches for ModalDeployment CRDs
-2. On create/update: Clones git repo or extracts image source
-3. Generates Modal app script with compute resources (CPU, memory, GPU)
-4. Runs `modal deploy` command to deploy/update the app
-5. Stores Modal app ID in CRD status for reliable deletion
-6. Updates CRD status with deployment results
-
-**Update Flow:**
-- Detects changes to CRD spec
-- Re-runs deployment process with updated configuration
-- Modal's `deploy` command updates existing apps by name
-- CRD status updated with new deployment information
-
-**Delete Flow:**
-- Retrieves Modal app ID from CRD status (persists across restarts)
-- Falls back to in-memory tracking if status unavailable
-- Uses app name from spec as final fallback
-- Runs `modal app stop` to deactivate the app
-- Cleans up local resources
-- Non-blocking: continues even if Modal cleanup fails
-
-### Testing
-
-```bash
-# Apply test deployment
-kubectl apply -f examples/function-deployment.yaml
-
-# Check status
-kubectl get modaldeployments
-kubectl logs -n modal-system -l app.kubernetes.io/name=modal-operator
-```
-
-### Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+**Quick start for developers:**
+- Use [kind](https://kind.sigs.k8s.io/) for local development (recommended)
+- Run `make deploy` to build and install in one step
+- Images are automatically tagged with git commit SHA
+- See [DEVELOPMENT.md](DEVELOPMENT.md) for full development guide
 
 ## Security Considerations
 
