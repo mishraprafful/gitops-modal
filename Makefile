@@ -66,27 +66,37 @@ check-kind: ## Check if current Kubernetes cluster is kind
 load-kind: ## Load Docker image into kind cluster (if cluster is kind)
 	@if command -v kind > /dev/null 2>&1; then \
 		echo "$(BLUE)Checking if cluster is kind...$(NC)"; \
-		context=$$(kubectl config current-context 2>/dev/null || echo ""); \
-		kind_cluster=""; \
-		if [ -n "$$context" ] && echo "$$context" | grep -q "kind"; then \
-			kind_cluster=$$(echo "$$context" | sed 's/.*kind-//' || echo "kind"); \
-		fi; \
-		if [ -z "$$kind_cluster" ]; then \
-			kind_clusters=$$(kind get clusters 2>/dev/null | head -n1 || echo ""); \
-			if [ -n "$$kind_clusters" ]; then \
-				kind_cluster="$$kind_clusters"; \
-			fi; \
-		fi; \
-		if [ -n "$$kind_cluster" ] && kind get clusters 2>/dev/null | grep -qw "$$kind_cluster"; then \
-			echo "$(BLUE)Detected kind cluster: $$kind_cluster$(NC)"; \
-			echo "$(BLUE)Loading image $(IMAGE) into kind cluster...$(NC)"; \
-			if kind load docker-image $(IMAGE) --name $$kind_cluster 2>/dev/null; then \
-				echo "$(GREEN)✅ Image loaded into kind cluster$(NC)"; \
-			else \
-				echo "$(YELLOW)⚠ Warning: Failed to load image into kind cluster$(NC)"; \
-			fi; \
+		if ! kubectl cluster-info > /dev/null 2>&1; then \
+			echo "$(BLUE)No Kubernetes cluster accessible, skipping kind image load$(NC)"; \
 		else \
-			echo "$(BLUE)Not a kind cluster, skipping image load$(NC)"; \
+			kind_cluster=""; \
+			context=$$(kubectl config current-context 2>/dev/null || echo ""); \
+			available_clusters=$$(kind get clusters 2>/dev/null || echo ""); \
+			if [ -z "$$available_clusters" ]; then \
+				echo "$(BLUE)No kind clusters found, skipping image load$(NC)"; \
+			else \
+				if [ -n "$$context" ] && echo "$$context" | grep -q "^kind-"; then \
+					context_cluster=$$(echo "$$context" | sed 's/^kind-//'); \
+					if echo "$$available_clusters" | grep -qw "$$context_cluster"; then \
+						kind_cluster="$$context_cluster"; \
+						echo "$(BLUE)Matched context to kind cluster: $$kind_cluster$(NC)"; \
+					fi; \
+				fi; \
+				if [ -z "$$kind_cluster" ]; then \
+					kind_cluster=$$(echo "$$available_clusters" | head -n1 | tr -d '[:space:]'); \
+					echo "$(BLUE)Using first available kind cluster: $$kind_cluster$(NC)"; \
+				fi; \
+				if [ -n "$$kind_cluster" ]; then \
+					echo "$(BLUE)Loading image $(IMAGE) into kind cluster: $$kind_cluster$(NC)"; \
+					if kind load docker-image $(IMAGE) --name $$kind_cluster; then \
+						echo "$(GREEN)✅ Image loaded into kind cluster: $$kind_cluster$(NC)"; \
+					else \
+						echo "$(RED)✗ Error: Failed to load image into kind cluster: $$kind_cluster$(NC)"; \
+						echo "$(BLUE)   Verify cluster is running: kind get clusters$(NC)"; \
+						echo "$(BLUE)   Check cluster nodes: kind get nodes --name $$kind_cluster$(NC)"; \
+					fi; \
+				fi; \
+			fi; \
 		fi \
 	else \
 		echo "$(BLUE)kind not installed, skipping image load$(NC)"; \
