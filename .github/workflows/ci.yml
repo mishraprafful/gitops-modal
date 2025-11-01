@@ -155,6 +155,7 @@ jobs:
 
       - name: Set up kind cluster context
         run: |
+          mkdir -p $HOME/.kube
           kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > $HOME/.kube/config
           kubectl cluster-info --context kind-${{ env.KIND_CLUSTER_NAME }}
 
@@ -220,6 +221,7 @@ jobs:
 
       - name: Set up kind cluster context
         run: |
+          mkdir -p $HOME/.kube
           kind get kubeconfig --name ${{ env.KIND_CLUSTER_NAME }} > $HOME/.kube/config
           kubectl cluster-info --context kind-${{ env.KIND_CLUSTER_NAME }}
 
