@@ -30,11 +30,15 @@ RUN echo "Running test_modal.py..." && \
 
 # Create operator user and set permissions
 RUN groupadd -r operator || true
-RUN useradd -r -g operator -m -d /home/operator operator || true
+RUN useradd -r -g operator -m -d /home/operator -u 1000 -s /bin/bash operator || true
 RUN chown -R operator:operator /app
 
 # Switch to operator user
 USER operator
+
+# Set USER environment variable for getpass.getuser() compatibility
+ENV USER=operator
+ENV HOME=/home/operator
 
 # Set up Modal CLI environment
 ENV PATH="/home/operator/.local/bin:${PATH}"

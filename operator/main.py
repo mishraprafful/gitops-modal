@@ -14,6 +14,10 @@ from kubernetes.client.rest import ApiException
 from modal_controller import ModalController
 from utils import setup_logging
 
+# Fix for getpass.getuser() when running in container without proper /etc/passwd entry
+if not os.environ.get("USER"):
+    os.environ["USER"] = "operator"
+
 # Configure logging
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -266,7 +270,9 @@ if __name__ == "__main__":
     # Run the operator
     # If WATCH_NAMESPACE is empty or None, watch all namespaces (clusterwide)
     watch_namespace = os.getenv("WATCH_NAMESPACE") or None
-    kopf.run(
-        clusterwide=watch_namespace is None,
-        namespace=watch_namespace,
-    )
+    if watch_namespace:
+        # Watch specific namespace
+        kopf.run(namespace=watch_namespace)
+    else:
+        # Watch all namespaces (clusterwide)
+        kopf.run(clusterwide=True)

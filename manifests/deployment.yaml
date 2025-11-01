@@ -36,9 +36,13 @@ spec:
             - main.py
           env:
             - name: WATCH_NAMESPACE
-              value: '' # Empty means watch all namespaces
+              value: ''
             - name: LOG_LEVEL
               value: 'INFO'
+            - name: USER
+              value: 'operator'
+            - name: HOME
+              value: '/home/operator'
             - name: MODAL_TOKEN_ID
               valueFrom:
                 secretKeyRef:
@@ -50,8 +54,7 @@ spec:
                   name: modal-credentials
                   key: token-secret
             # Modal CLI configuration
-            - name: MODAL_CONFIG_PATH
-              value: '/home/operator/.modal'
+            # MODAL_CONFIG_PATH not set - Modal will use default location ~/.modal/config.json
             - name: MODAL_ENVIRONMENT
               value: 'main'
             # Ensure git is available for cloning repos
