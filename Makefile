@@ -147,21 +147,23 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 	@kubectl wait --for condition=established --timeout=60s crd/modaldeployments.modal.io || true
 
 	@# Create Modal credentials secret if provided
-	@if [ -n "$(MODAL_TOKEN_ID)" ] && [ -n "$(MODAL_TOKEN_SECRET)" ]; then \
-		echo "$(BLUE)Creating Modal credentials secret...$(NC)"; \
+	@echo "$(BLUE)Configuring Modal Credentials...$(NC)"
+	@if [ -n '$(MODAL_TOKEN_ID)' ] && [ -n '$(MODAL_TOKEN_SECRET)' ]; then \
+		echo '$(BLUE)Creating Modal credentials secret...$(NC)'; \
+		MODAL_TOKEN_ID='$(MODAL_TOKEN_ID)' MODAL_TOKEN_SECRET='$(MODAL_TOKEN_SECRET)' \
 		kubectl create secret generic modal-credentials \
 			--namespace=$(NAMESPACE) \
-			--from-literal=token-id="$(MODAL_TOKEN_ID)" \
-			--from-literal=token-secret="$(MODAL_TOKEN_SECRET)" \
+			--from-literal=token-id="$$MODAL_TOKEN_ID" \
+			--from-literal=token-secret="$$MODAL_TOKEN_SECRET" \
 			--dry-run=client -o yaml | kubectl apply -f -; \
-		echo "$(GREEN)✅ Modal credentials secret created$(NC)"; \
+		echo '$(GREEN)✅ Modal credentials secret created$(NC)'; \
 	else \
-		echo "$(YELLOW)⚠ Warning: Modal credentials not provided$(NC)"; \
-		echo "$(BLUE)   Create the secret manually with:$(NC)"; \
-		echo "   kubectl create secret generic modal-credentials \\"; \
-		echo "     --namespace=$(NAMESPACE) \\"; \
-		echo "     --from-literal=token-id=YOUR_TOKEN_ID \\"; \
-		echo "     --from-literal=token-secret=YOUR_TOKEN_SECRET"; \
+		echo '$(YELLOW)⚠ Warning: Modal credentials not provided$(NC)'; \
+		echo '$(BLUE)   Create the secret manually with:$(NC)'; \
+		echo '   kubectl create secret generic modal-credentials \'; \
+		echo '     --namespace=$(NAMESPACE) \'; \
+		echo '     --from-literal=token-id=YOUR_TOKEN_ID \'; \
+		echo '     --from-literal=token-secret=YOUR_TOKEN_SECRET'; \
 	fi
 
 	@# Install RBAC
