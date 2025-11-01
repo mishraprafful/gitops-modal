@@ -1,0 +1,47 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Lock files (if not needed in production)
+uv.lock
+
+# Documentation (if not needed in container)
+*.md
+README*
+
+# Test files - Keep them for build-time testing
+# Tests are run during Docker build, so they must be included
+# .pytest_cache/
+# coverage/
+

@@ -35,15 +35,27 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
    cd gitops-modal
    ```
 
-2. **Set up Modal credentials:**
+2. **Build the operator image:**
    ```bash
-   export MODAL_TOKEN_ID="your-modal-token-id"
-   export MODAL_TOKEN_SECRET="your-modal-token-secret"
+   # Build with default image name
+   make build
+   
+   # Or build with custom image name
+   make build IMAGE=your-registry/modal-operator:v1.0.0
    ```
 
 3. **Install the operator:**
    ```bash
-   ./install.sh
+   # Install with default image (must match the image built above)
+   make install
+   
+   # Or install with custom image and Modal credentials
+   make install IMAGE=your-registry/modal-operator:v1.0.0 \
+     MODAL_TOKEN_ID="your-token-id" \
+     MODAL_TOKEN_SECRET="your-token-secret"
+   
+   # Install and watch a specific namespace
+   make install WATCH_NAMESPACE=default
    ```
 
 4. **Verify installation:**
@@ -51,6 +63,13 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
    kubectl get modaldeployments
    kubectl get pods -n modal-system
    ```
+
+5. **Uninstall (if needed):**
+   ```bash
+   make uninstall
+   ```
+
+**Note:** The `make install` command automatically updates the image name in `manifests/deployment.yaml` to match the image you built. This ensures the deployment uses your built image.
 
 ### Deploy Your First Modal App
 
@@ -541,10 +560,16 @@ kubectl describe modaldeployment <name>
 
 ```bash
 # Build and test Docker image (recommended)
-./build.sh
+make build
 
-# Or build manually
-docker build -t modal-operator:latest -f operator/Dockerfile operator/
+# Build with custom image name
+make build IMAGE=your-registry/modal-operator:v1.0.0
+
+# Build and install in one go
+make build install
+
+# Show all available make targets
+make help
 
 # Run locally (for development)
 cd operator

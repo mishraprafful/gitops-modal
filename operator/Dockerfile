@@ -21,6 +21,13 @@ RUN python -c "import modal; print('Modal package installed successfully')"
 # Copy operator code
 COPY . .
 
+# Run tests to ensure code quality (fail build if tests fail)
+RUN echo "Running test_modal.py..." && \
+    python test_modal.py && \
+    echo "Running test_gpu_config.py..." && \
+    python test_gpu_config.py && \
+    echo "✅ All tests passed!"
+
 # Create operator user and set permissions
 RUN groupadd -r operator || true
 RUN useradd -r -g operator -m -d /home/operator operator || true
@@ -31,13 +38,13 @@ USER operator
 
 # Set up Modal CLI environment
 ENV PATH="/home/operator/.local/bin:${PATH}"
-ENV MODAL_CONFIG_PATH="/home/operator/.modal"
 
-# Create Modal config directory
+# Create Modal config directory (Modal will use default location ~/.modal/)
 RUN mkdir -p /home/operator/.modal
 
-# Health check to ensure Modal is working
-RUN python -c "import modal; app = modal.App('health-check'); print('Modal CLI ready')"
+# Health check to ensure Modal package can be imported
+# Note: Full Modal functionality requires credentials configured at runtime
+RUN python -c "import modal; print('Modal package imported successfully')"
 
 # Create startup script that uses uv
 RUN echo '#!/bin/bash\n\

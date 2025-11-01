@@ -5,9 +5,14 @@ Test script to demonstrate GPU configuration passing to Modal apps
 
 import sys
 import os
-sys.path.append('operator')
 
-from modal_controller import ModalController
+# Try to import from current directory first (for Docker build context)
+try:
+    from modal_controller import ModalController
+except ImportError:
+    # Fallback for local development
+    sys.path.append('operator')
+    from modal_controller import ModalController
 
 def test_gpu_config_parsing():
     """Test that GPU configurations are properly parsed and included in Modal app script"""
@@ -71,6 +76,16 @@ def test_gpu_config_parsing():
             print("✅ Timeout configuration correctly included")
         else:
             print("❌ Timeout configuration missing")
+            
+        # Exit with error if any test failed
+        if expected_gpu_config not in script_content or \
+           "cpu=1.0" not in script_content or \
+           "memory=1024" not in script_content or \
+           "timeout=7200" not in script_content:
+            print("\n❌ Test failed: Some configurations are missing!")
+            sys.exit(1)
+        
+        print("\n✅ All GPU configuration tests passed!")
 
 if __name__ == "__main__":
     test_gpu_config_parsing()
