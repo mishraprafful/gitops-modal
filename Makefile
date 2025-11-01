@@ -37,7 +37,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
-.PHONY: help build install uninstall test clean update-image load-kind check-kind
+.PHONY: help build deploy install uninstall test clean update-image load-kind check-kind
 
 help: ## Show this help message
 	@echo "$(BLUE)Modal GitOps Operator Makefile$(NC)"
@@ -130,8 +130,8 @@ build: ## Build the Docker image (auto-tags with git commit SHA + -dirty if tree
 	@echo "$(BLUE)🧪 Testing Modal package import in the image...$(NC)"
 	docker run --rm $(IMAGE) python -c "import modal; print('✓ Modal package imported successfully')"
 	@echo "$(GREEN)🎉 Build and test completed!$(NC)"
-	@echo ""
-	@$(MAKE) load-kind
+
+deploy: build install ## Build and install the operator in one step
 
 update-image: ## Update the image in deployment.yaml (used by install)
 	@echo "$(BLUE)Updating deployment.yaml with image: $(IMAGE)$(NC)"

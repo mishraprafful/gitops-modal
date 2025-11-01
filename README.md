@@ -64,10 +64,11 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
 
 4. **Build and install:**
    ```bash
-   # Build the image (automatically loads into kind if detected)
-   make build
+   # Option 1: Build and install in one command (recommended)
+   make deploy
    
-   # Install the operator (automatically loads image into kind if needed)
+   # Option 2: Build and install separately
+   make build
    make install
    ```
 
@@ -655,7 +656,7 @@ make build
 make build IMAGE=your-registry/modal-operator:v1.0.0
 
 # Build and install in one go
-make build install
+make deploy
 
 # Manually load image into kind (if needed)
 make load-kind
