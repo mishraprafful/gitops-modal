@@ -16,5 +16,6 @@ spec:
       credentials:
         secretRef:
           name: 'git-credentials'
+          namespace: 'modal-system'
   environment:
     name: 'main'
