@@ -168,7 +168,7 @@ class ModalController:
 
             resource["status"]["phase"] = phase
             resource["status"]["lastDeployment"] = (
-                datetime.now(timezone.utc).isoformat() + "Z"
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             )
 
             if modal_app_id:
@@ -181,7 +181,7 @@ class ModalController:
                 # Add timestamp to conditions
                 for condition in conditions:
                     condition["lastTransitionTime"] = (
-                        datetime.now(timezone.utc).isoformat() + "Z"
+                        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                     )
                 resource["status"]["conditions"] = conditions
 
