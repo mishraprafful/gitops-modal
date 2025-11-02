@@ -106,7 +106,7 @@ kubectl get modaldeployments
 - [ ] New and existing unit tests pass locally with my changes
 - [ ] Any dependent changes have been merged and published
 - [ ] I have checked my code and corrected any misspellings
-- [ ] I have updated the CHANGES.md file (if applicable)
+- [ ] I have updated the CHANGELOG.md file (if applicable)
 
 ## CRD/API Changes
 
