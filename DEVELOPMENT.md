@@ -213,29 +213,54 @@ kubectl delete -f examples/function-deployment.yaml
 
 #### Deployment Flow
 
-1. Operator watches for ModalDeployment CRDs using [Kopf](https://kopf.readthedocs.io/)
-2. On create/update:
-   - Clones git repository or extracts container image
-   - Deploys the user's Modal app file directly (as-is, without modification)
-   - Runs `modal deploy` command to deploy/update the app
-   - Stores Modal app ID in CRD status for reliable deletion
-   - Updates CRD status with deployment results
+1. **Watch for CRDs**: Operator watches for ModalDeployment CRDs using [Kopf](https://kopf.readthedocs.io/)
+
+2. **On Create/Update**:
+   - Clone git repository (or extract container image)
+   - Extract app name from the Modal Python file (looks for `App("name")` pattern)
+   - Deploy using `modal deploy <app-file>`
+   - Wait 2 seconds for app to register in Modal's system
+   - Query Modal API: `modal app list --json` to get all deployed apps
+   - Find the deployed app by name and retrieve its app ID
+   - Store app ID in CRD `status.modalAppId` for reliable deletion
+   - Update CRD status with deployment results (URL, timestamp, conditions)
+
+3. **Key Details**:
+   - Modal app files are deployed as-is without modification
+   - App name extracted from source file takes precedence over CRD `appName`
+   - App ID (format: `ap-xxxxxxxxx`) is the unique identifier used for deletion
 
 #### Update Flow
 
-- Detects changes to CRD spec
-- Re-runs deployment process with updated configuration
-- Modal's `deploy` command updates existing apps by name
-- CRD status updated with new deployment information
+> **Current Limitation**: Updates require manually reapplying the CRD. Automatic git polling and reconciliation is tracked in [Issue #5](https://github.com/mishraprafful/gitops-modal/issues/5).
+
+1. User manually updates and reapplies CRD spec
+2. Operator detects changes to CRD spec
+3. Re-runs full deployment process with updated configuration
+4. Modal's `deploy` command updates existing apps (by name)
+5. New app ID is retrieved and stored in status
+6. CRD status updated with new deployment information
 
 #### Delete Flow
 
-- Retrieves Modal app ID from CRD status (persists across restarts)
-- Falls back to in-memory tracking if status unavailable
-- Uses app name from spec as final fallback
-- Runs `modal app stop` to deactivate the app
-- Cleans up local resources
+**3-tier strategy for finding app ID:**
+
+1. **Primary**: Retrieve app ID from CRD `status.modalAppId` (most reliable, persists across restarts)
+2. **Fallback**: Check in-memory tracking (works within same operator session)
+3. **Last Resort**: Query `modal app list --json` to find app by name
+
+**Deletion process:**
+
+- Once app ID is found: `modal app stop <app-id>`
+- Clean up local resources (cloned repo)
+- Remove from in-memory tracking
 - Non-blocking: continues even if Modal cleanup fails
+
+**Why app ID is critical:**
+
+- User's Modal app name may differ from CRD `appName`
+- App ID is unique and reliable across deployments
+- Enables deletion even after operator restarts
 
 ### Key Components
 
