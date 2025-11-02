@@ -55,15 +55,18 @@ A Kubernetes operator that enables GitOps-style deployments to [Modal](https://m
    cd gitops-modal
    ```
 
-3. **Set up Modal credentials (optional - can use .env file):**
+3. **Set up credentials (optional - can use .env file):**
 
    ```bash
    # Create .env file with your Modal credentials
    cat > .env << EOF
    MODAL_TOKEN_ID=your-modal-token-id
    MODAL_TOKEN_SECRET=your-modal-token-secret
+   GITHUB_TOKEN=ghp_your_github_token  # Optional: for private repositories
    EOF
    ```
+
+   **Note:** If you add `GITHUB_TOKEN` to your `.env` file, the installation will automatically create a `git-credentials` secret for accessing private repositories.
 
 4. **Build and install:**
 
@@ -265,14 +268,20 @@ source:
 Create the PAT secret:
 
 ```bash
+# Option 1: Add to .env file (recommended)
+echo "GITHUB_TOKEN=ghp_your_token_here" >> .env
+make install  # Secret created automatically
+
+# Option 2: Create manually
+kubectl create secret generic git-credentials \
+  --namespace=modal-system \
+  --from-literal=token=ghp_your_token_here
+
 # Get token from GitHub: Settings > Developer settings > Personal access tokens
 # Required scopes: repo (full control of private repositories)
-
-kubectl create secret generic git-pat-credentials \
-  --from-literal=token=ghp_your_token_here
 ```
 
-See `examples/private-repo-example.yaml` for complete examples.
+See `examples/private-repo-deployment.yaml` for a complete example.
 
 #### Container Image Source
 
@@ -352,7 +361,6 @@ The `examples/` directory contains ready-to-use ModalDeployment manifests:
 - **`gpu-job-deployment.yaml`** - GPU-accelerated ML workload (Stable Diffusion)
 - **`fastapi-app-deployment.yaml`** - Flask web application with webhooks
 - **`private-repo-deployment.yaml`** - Deploy from private repository (requires credentials)
-- **`private-repo-example.yaml`** - Detailed documentation for SSH & PAT authentication
 
 **Quick start:**
 

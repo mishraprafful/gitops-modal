@@ -3,4 +3,4 @@ resources:
   - gpu-job-deployment.yaml
   - hello-world-deployment.yaml
   - fastapi-app-deployment.yaml
-  # private-repo-example.yaml is documentation-only, not deployable as-is
+  - private-repo-deployment.yaml

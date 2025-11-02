@@ -21,6 +21,7 @@ WATCH_NAMESPACE ?=
 # Load .env file if it exists (for local development)
 # Format: MODAL_TOKEN_ID=value
 #         MODAL_TOKEN_SECRET=value
+#         GITHUB_TOKEN=value (optional, for private git repositories)
 ifneq (,$(wildcard .env))
     include .env
     export
@@ -29,6 +30,9 @@ endif
 # Modal credentials - can be set via .env file, environment variables, or make arguments
 MODAL_TOKEN_ID ?=
 MODAL_TOKEN_SECRET ?=
+
+# GitHub token - optional, only needed for private repositories
+GITHUB_TOKEN ?=
 
 # Colors for output
 BLUE := \033[0;34m
@@ -49,12 +53,13 @@ help: ## Show this help message
 	@echo "  NAMESPACE=$(NAMESPACE)      Kubernetes namespace"
 	@echo "  MODAL_TOKEN_ID=             Modal token ID (optional, can be in .env)"
 	@echo "  MODAL_TOKEN_SECRET=         Modal token secret (optional, can be in .env)"
+	@echo "  GITHUB_TOKEN=               GitHub PAT for private repos (optional, can be in .env)"
 	@echo "  WATCH_NAMESPACE=            Namespace to watch (empty = all namespaces, or specify a namespace)"
 	@echo ""
 	@if [ -f .env ]; then \
 		echo "$(GREEN)✓ .env file found and will be loaded$(NC)"; \
 	else \
-		echo "$(YELLOW)ℹ Tip: Create .env file with MODAL_TOKEN_ID and MODAL_TOKEN_SECRET$(NC)"; \
+		echo "$(YELLOW)ℹ Tip: Create .env file with MODAL_TOKEN_ID, MODAL_TOKEN_SECRET, and optionally GITHUB_TOKEN$(NC)"; \
 	fi
 	@echo ""
 	@echo "Targets:"
@@ -158,6 +163,20 @@ install: update-image ## Install the operator (updates image, installs CRD and m
 		echo "$(GREEN)✅ Modal credentials secret created$(NC)" || \
 		echo "$(YELLOW)⚠️  Warning: Failed to create Modal credentials secret$(NC)"
 	@rm -f /tmp/modal-token-id.txt /tmp/modal-token-secret.txt
+
+	@# Create git credentials secret if GITHUB_TOKEN is set (for private repos)
+	@if [ -n "$(GITHUB_TOKEN)" ]; then \
+		echo "$(BLUE)Creating git credentials secret from GITHUB_TOKEN...$(NC)"; \
+		kubectl create secret generic git-credentials \
+			--namespace=$(NAMESPACE) \
+			--from-literal=token=$(GITHUB_TOKEN) \
+			--dry-run=client -o yaml | kubectl apply -f - && \
+			echo "$(GREEN)✅ Git credentials secret created$(NC)" || \
+			echo "$(YELLOW)⚠️  Warning: Failed to create git credentials secret$(NC)"; \
+	else \
+		echo "$(BLUE)GITHUB_TOKEN not set, skipping git credentials secret$(NC)"; \
+		echo "$(BLUE)   (Only needed for private repositories)$(NC)"; \
+	fi
 
 	@# Install RBAC
 	@echo "$(BLUE)Installing RBAC resources...$(NC)"

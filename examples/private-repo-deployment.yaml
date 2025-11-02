@@ -10,9 +10,9 @@ spec:
   description: 'Modal app from private repository'
   source:
     git:
-      repository: 'https://github.com/YOUR-ORG/your-private-repo.git'
+      repository: 'https://github.com/mishraprafful/modal-examples-private.git'
       branch: 'main'
-      path: 'app.py'
+      path: '01_getting_started/hello_world.py'
       credentials:
         secretRef:
           name: 'git-credentials'
