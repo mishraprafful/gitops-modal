@@ -1,0 +1,21 @@
+apiVersion: modal.io/v1
+kind: ModalDeployment
+metadata:
+  name: flask-web-app
+  labels:
+    app: web-app
+    type: web-service
+    framework: flask
+spec:
+  appName: flask-web-app
+  description: 'Flask web application'
+  source:
+    git:
+      repository: 'https://github.com/modal-labs/modal-examples'
+      branch: 'main'
+      path: '07_web_endpoints/flask_app.py'
+  environment:
+    name: 'main'
+    variables:
+      LOG_LEVEL: 'INFO'
+      ENVIRONMENT: 'production'

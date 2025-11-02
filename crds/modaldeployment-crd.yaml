@@ -53,6 +53,21 @@ spec:
                         revision:
                           type: string
                           description: 'Git commit SHA or tag'
+                        credentials:
+                          type: object
+                          description: 'Credentials for accessing private repositories'
+                          properties:
+                            secretRef:
+                              type: object
+                              required:
+                                - name
+                              properties:
+                                name:
+                                  type: string
+                                  description: 'Name of Kubernetes secret containing git credentials'
+                                namespace:
+                                  type: string
+                                  description: 'Namespace of the secret (defaults to deployment namespace)'
                     image:
                       type: object
                       required:
@@ -108,112 +123,6 @@ spec:
                               namespace:
                                 type: string
                                 description: 'Namespace of the secret'
-                compute:
-                  type: object
-                  description: 'Compute resource configuration'
-                  properties:
-                    cpu:
-                      type: string
-                      description: "CPU allocation (e.g., '1', '0.25', '4')"
-                      pattern: "^[0-9]*\\.?[0-9]+$"
-                    memory:
-                      type: string
-                      description: "Memory allocation (e.g., '512Mi', '2Gi')"
-                      pattern: '^[0-9]+(Mi|Gi|Ti)$'
-                    gpu:
-                      type: string
-                      description: "GPU type (e.g., 'T4', 'A10G', 'A100')"
-                      enum: [T4, L4, A10, A100, A100-40GB, A100-80GB, L40S, H100/H100!, H200, B200]
-                    gpuCount:
-                      type: integer
-                      description: 'Number of GPUs'
-                      minimum: 1
-                      maximum: 8
-                    timeout:
-                      type: integer
-                      description: 'Function timeout in seconds'
-                      minimum: 1
-                      maximum: 86400
-                scaling:
-                  type: object
-                  description: 'Scaling configuration'
-                  properties:
-                    minInstances:
-                      type: integer
-                      description: 'Minimum number of instances'
-                      minimum: 0
-                      default: 0
-                    maxInstances:
-                      type: integer
-                      description: 'Maximum number of instances'
-                      minimum: 1
-                      maximum: 1000
-                    concurrency:
-                      type: integer
-                      description: 'Max concurrent requests per instance'
-                      minimum: 1
-                      default: 1
-                    idleTimeout:
-                      type: integer
-                      description: 'Idle timeout in seconds before scale down'
-                      minimum: 0
-                      default: 300
-                schedule:
-                  type: object
-                  description: 'Cron schedule for scheduled functions'
-                  properties:
-                    cron:
-                      type: string
-                      description: "Cron expression (e.g., '0 9 * * MON-FRI')"
-                    timezone:
-                      type: string
-                      description: 'Timezone for the schedule'
-                      default: 'UTC'
-                webhooks:
-                  type: object
-                  description: 'Webhook configuration for web apps'
-                  properties:
-                    enabled:
-                      type: boolean
-                      description: 'Enable webhook endpoint'
-                      default: false
-                    path:
-                      type: string
-                      description: 'Webhook path'
-                      default: '/'
-                    methods:
-                      type: array
-                      description: 'HTTP methods to allow'
-                      items:
-                        type: string
-                        enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
-                      default: ['GET', 'POST']
-                deployment:
-                  type: object
-                  description: 'Deployment configuration'
-                  properties:
-                    strategy:
-                      type: string
-                      description: 'Deployment strategy'
-                      enum: ['replace', 'rolling']
-                      default: 'rolling'
-                    healthCheck:
-                      type: object
-                      description: 'Health check configuration'
-                      properties:
-                        enabled:
-                          type: boolean
-                          default: true
-                        path:
-                          type: string
-                          description: 'Health check endpoint path'
-                          default: '/health'
-                        timeout:
-                          type: integer
-                          description: 'Health check timeout in seconds'
-                          minimum: 1
-                          maximum: 300
-                          default: 30
             status:
               type: object
               properties:

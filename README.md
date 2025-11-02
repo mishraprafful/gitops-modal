@@ -1,479 +1,219 @@
 # Modal GitOps Operator
 
-A Kubernetes operator that enables GitOps-style deployments to [Modal](https://modal.com) using Custom Resource Definitions (CRDs). Deploy and manage Modal applications declaratively through Kubernetes manifests.
+Deploy [Modal](https://modal.com) applications declaratively using Kubernetes CRDs. Enable GitOps workflows with ArgoCD, Flux, or any GitOps tool.
 
-## Features
+## What It Does
 
-- 🚀 **Declarative Deployments**: Define Modal applications using Kubernetes CRDs
-- 🔄 **GitOps Workflow**: Integrate with ArgoCD, Flux, or other GitOps tools
-- 🔄 **Update Support**: Automatically update deployments when CRD specs change
-- 🗑️ **Delete Support**: Properly stop and clean up Modal apps on resource deletion
-- 🎯 **Multi-Environment Support**: Deploy to different Modal environments (dev, staging, prod)
-- 📊 **Resource Management**: Configure CPU, memory, GPU, and scaling parameters
-- 🎮 **GPU Support**: Full support for all Modal GPU types (T4, L4, A10, A100, H100, H200, B200, and more)
-- 🔐 **Secret Management**: Secure handling of Modal secrets and Kubernetes secrets
-- ⏰ **Scheduled Jobs**: Support for cron-based scheduled functions
-- 🌐 **Web Applications**: Deploy FastAPI and other web apps with webhooks
-- 🔍 **Status Monitoring**: Real-time status updates and health checks
-- 💾 **Persistent State**: App IDs stored in CRD status for reliable deletion across operator restarts
+- 📦 **Deploy Modal apps from Git** - Just point to your Modal Python file
+- 🔄 **GitOps-ready** - Works with ArgoCD, Flux, and other GitOps tools
+- 🎯 **Smart deletion** - Tracks app IDs for reliable cleanup
+- 🔐 **Secure** - Supports private repos (SSH/PAT) and Kubernetes secrets
+- 📊 **Status tracking** - Real-time deployment status in Kubernetes
 
 ## Quick Start
 
-### Prerequisites
+### 1. Prerequisites
 
-- Kubernetes cluster (1.19+)
-  - **Recommended for local testing: [kind](https://kind.sigs.k8s.io/)** (Kubernetes in Docker)
-  - The Makefile automatically detects kind clusters and loads images for you
+- Kubernetes cluster (kind recommended for local testing)
+- [Modal account](https://modal.com) with API credentials
 - kubectl configured
-- Modal account with API credentials
-- Docker (for building custom operator image)
 
-### Installation
+### 2. Install
 
-#### Quick Start with kind (Recommended for Testing)
+```bash
+# Clone repository
+git clone https://github.com/your-org/gitops-modal
+cd gitops-modal
 
-[kind](https://kind.sigs.k8s.io/) is the recommended way to test this operator locally. The Makefile automatically detects kind clusters and loads images for you.
+# Create .env with your Modal credentials
+cat > .env << EOF
+MODAL_TOKEN_ID=your-modal-token-id
+MODAL_TOKEN_SECRET=your-modal-token-secret
+EOF
 
-1. **Set up a kind cluster:**
+# Build and deploy (for kind clusters - auto-loads image)
+make deploy
 
-   ```bash
-   # Install kind (if not already installed)
-   # macOS: brew install kind
-   # Linux: See https://kind.sigs.k8s.io/docs/user/quick-start/#installation
+# For other clusters, push to registry first:
+make build IMAGE=your-registry/modal-operator:v1.0.0
+docker push your-registry/modal-operator:v1.0.0
+make install IMAGE=your-registry/modal-operator:v1.0.0
+```
 
-   # Create a kind cluster
-   kind create cluster --name modal-test
+### 3. Deploy Your First App
 
-   # Verify cluster is running
-   kubectl cluster-info --context kind-modal-test
-   ```
+Create a Modal app file (`hello.py`):
 
-2. **Clone the repository:**
+```python
+import modal
 
-   ```bash
-   git clone https://github.com/your-org/gitops-modal
-   cd gitops-modal
-   ```
+app = modal.App("hello-world")
 
-3. **Set up Modal credentials (optional - can use .env file):**
+@app.function()
+def hello():
+    print("Hello from Modal!")
+    return "Hello World"
+```
 
-   ```bash
-   # Create .env file with your Modal credentials
-   cat > .env << EOF
-   MODAL_TOKEN_ID=your-modal-token-id
-   MODAL_TOKEN_SECRET=your-modal-token-secret
-   EOF
-   ```
+Create a deployment:
 
-4. **Build and install:**
+```yaml
+apiVersion: modal.io/v1
+kind: ModalDeployment
+metadata:
+  name: hello-world
+spec:
+  appName: hello-world
+  source:
+    git:
+      repository: "https://github.com/your-org/modal-apps"
+      branch: "main"
+      path: "hello.py"
+  environment:
+    name: "main"
+```
 
-   ```bash
-   # Option 1: Build and install in one command (recommended)
-   make deploy
+Deploy it:
 
-   # Option 2: Build and install separately
-   make build
-   make install
-   ```
+```bash
+kubectl apply -f deployment.yaml
 
-The Makefile will automatically:
+# Check status
+kubectl get modaldeployments
+kubectl describe modaldeployment hello-world
 
-- Detect if you're using a kind cluster
-- Load the Docker image into kind (no need to push to a registry!)
-- Install the operator with the correct image
+# To update: manually reapply or use kubectl edit
+kubectl apply -f deployment.yaml  # After making changes
+```
 
-#### Installation on Other Clusters
+> **Note**: The operator currently requires manual updates (reapply the CRD). Automatic git polling and reconciliation is planned - see [Issue #5](https://github.com/mishraprafful/gitops-modal/issues/5)
 
-For non-kind clusters, you'll need to push your image to a container registry:
+## Configuration
 
-1. **Build the operator image:**
+### Source from Git
 
-   ```bash
-   # Build with custom image name (include your registry)
-   make build IMAGE=your-registry.io/modal-operator:v1.0.0
+```yaml
+spec:
+  appName: my-app
+  source:
+    git:
+      repository: "https://github.com/org/repo"
+      branch: "main"           # Optional, default: main
+      path: "path/to/app.py"   # Your Modal app file
+```
 
-   # Push to registry
-   docker push your-registry.io/modal-operator:v1.0.0
-   ```
+### Private Repositories
 
-2. **Install the operator:**
+**SSH Key:**
 
-   ```bash
-   # Install with your image and Modal credentials
-   make install IMAGE=your-registry.io/modal-operator:v1.0.0 \
-     MODAL_TOKEN_ID="your-token-id" \
-     MODAL_TOKEN_SECRET="your-token-secret"
-
-   # Or use .env file for credentials
-   make install IMAGE=your-registry.io/modal-operator:v1.0.0
-   ```
-
-4. **Verify installation:**
-
-   ```bash
-   kubectl get modaldeployments
-   kubectl get pods -n modal-system
-   ```
-
-5. **Uninstall (if needed):**
-
-   ```bash
-   make uninstall
-   ```
-
-**Note:** The `make install` command automatically updates the image name in `manifests/deployment.yaml` to match the image you built. This ensures the deployment uses your built image.
-
-**For development:** See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development setup, building, testing, and contribution guidelines.
-
-### Deploy Your First Modal App
-
-1. **Create a simple function deployment:**
-
-   ```yaml
-   apiVersion: modal.io/v1
-   kind: ModalDeployment
-   metadata:
-     name: hello-world
-   spec:
-     appName: hello-world-function
-     description: "My first Modal function via GitOps"
-     source:
-       git:
-         repository: "https://github.com/your-org/modal-apps"
-         branch: "main"
-         path: "functions/hello_world.py"
-     environment:
-       name: "main"
-     compute:
-       cpu: "0.25"
-       memory: "512Mi"
-   ```
-
-2. **Apply the deployment:**
-
-   ```bash
-   kubectl apply -f your-deployment.yaml
-   ```
-
-3. **Check status:**
-
-   ```bash
-   kubectl get modaldeployment hello-world
-   kubectl describe modaldeployment hello-world
-   ```
-
-4. **Update the deployment:**
-
-   ```bash
-   # Edit the YAML file and reapply
-   kubectl edit modaldeployment hello-world
-   # Or apply updated YAML
-   kubectl apply -f your-deployment.yaml
-   ```
-
-5. **Delete the deployment:**
-
-   ```bash
-   kubectl delete modaldeployment hello-world
-   # The operator will automatically stop the Modal app
-   ```
-
-## Configuration Reference
-
-### ModalDeployment Spec
-
-| Field         | Type   | Description                           | Required |
-| ------------- | ------ | ------------------------------------- | -------- |
-| `appName`     | string | Name of the Modal application         | ✅        |
-| `description` | string | Description of the application        | ❌        |
-| `source`      | object | Source configuration (git or image)   | ✅        |
-| `environment` | object | Environment and secrets configuration | ❌        |
-| `compute`     | object | CPU, memory, GPU configuration        | ❌        |
-| `scaling`     | object | Auto-scaling parameters               | ❌        |
-| `schedule`    | object | Cron schedule for scheduled functions | ❌        |
-| `webhooks`    | object | Webhook configuration for web apps    | ❌        |
-| `deployment`  | object | Deployment strategy and health checks | ❌        |
-
-### Source Configuration
-
-#### Git Source
+```bash
+# Create secret
+kubectl create secret generic git-ssh-credentials \
+  --from-file=ssh-privatekey=$HOME/.ssh/deploy_key
+```
 
 ```yaml
 source:
   git:
-    repository: "https://github.com/your-org/modal-apps"
-    branch: "main"              # Optional, default: main
-    path: "path/to/app.py"      # Path to Modal app file
-    revision: "commit-sha"      # Optional, specific commit
+    repository: "git@github.com:org/private-repo.git"
+    path: "app.py"
+    credentials:
+      secretRef:
+        name: git-ssh-credentials
 ```
 
-#### Container Image Source
+**Personal Access Token:**
+
+```bash
+# Add to .env file
+echo "GITHUB_TOKEN=ghp_your_token" >> .env
+make install  # Automatically creates secret
+```
 
 ```yaml
 source:
-  image:
-    name: "your-registry/modal-app"
-    tag: "v1.0.0"              # Optional, default: latest
-    pullSecret: "registry-creds" # Optional
+  git:
+    repository: "https://github.com/org/private-repo.git"
+    path: "app.py"
+    credentials:
+      secretRef:
+        name: git-credentials
 ```
 
-### Environment Configuration
-
-Configure environment variables and secrets for your Modal applications.
-
-**Priority Order (highest to lowest):**
-
-1. Kubernetes secrets
-2. Explicit `variables` in YAML
-3. Default values
+### Environment Variables & Secrets
 
 ```yaml
 environment:
-  name: "main"                  # Modal environment: main, dev, staging, prod
+  name: "main"  # Modal environment: main, dev, staging, prod
   variables:
     LOG_LEVEL: "INFO"
     API_URL: "https://api.example.com"
   secrets:
-  - name: "db-credentials"      # Modal secret name
-    secretRef:
-      name: "database-secret"   # Kubernetes secret name
-      namespace: "default"      # Optional, defaults to resource namespace
-```
-
-### Compute Configuration
-
-```yaml
-compute:
-  cpu: "1"                      # CPU allocation (cores)
-  memory: "2Gi"                 # Memory allocation (e.g., "512Mi", "1Gi", "2Ti")
-  gpu: "A100"                   # GPU type (see supported types below)
-  gpuCount: 2                   # Number of GPUs (1-8)
-  timeout: 300                  # Function timeout in seconds (1-86400)
-```
-
-**Supported GPU Types:**
-
-- `T4` - NVIDIA T4 GPU
-- `L4` - NVIDIA L4 GPU
-- `A10` - NVIDIA A10 GPU
-- `A100` - NVIDIA A100 GPU
-- `A100-40GB` - NVIDIA A100 GPU (40GB memory)
-- `A100-80GB` - NVIDIA A100 GPU (80GB memory)
-- `L40S` - NVIDIA L40S GPU
-- `H100/H100!` - NVIDIA H100 GPU
-- `H200` - NVIDIA H200 GPU
-- `B200` - NVIDIA B200 GPU
-
-### Scaling Configuration
-
-```yaml
-scaling:
-  minInstances: 0               # Minimum instances (0 for serverless)
-  maxInstances: 50              # Maximum instances
-  concurrency: 10               # Requests per instance
-  idleTimeout: 300              # Idle timeout before scale down
-```
-
-### Schedule Configuration
-
-```yaml
-schedule:
-  cron: "0 2 * * *"            # Cron expression (daily at 2 AM)
-  timezone: "UTC"               # Timezone
-```
-
-### Webhook Configuration
-
-```yaml
-webhooks:
-  enabled: true
-  path: "/"                     # Webhook path
-  methods: ["GET", "POST"]      # HTTP methods
-```
-
-## Examples
-
-### Web Application (FastAPI)
-
-```yaml
-apiVersion: modal.io/v1
-kind: ModalDeployment
-metadata:
-  name: fastapi-web-app
-spec:
-  appName: fastapi-web-app
-  description: "FastAPI web application"
-  source:
-    git:
-      repository: "https://github.com/your-org/modal-apps"
-      path: "web/fastapi_app.py"
-  environment:
-    name: "prod"
-    variables:
-      DATABASE_URL: "postgresql://..."
-    secrets:
     - name: "db-credentials"
       secretRef:
         name: "database-secret"
-  compute:
-    cpu: "1"
-    memory: "1Gi"
-  scaling:
-    minInstances: 2
-    maxInstances: 50
-    concurrency: 10
-  webhooks:
-    enabled: true
-    path: "/"
-    methods: ["GET", "POST", "PUT", "DELETE"]
 ```
 
-### GPU ML Training Job
+### Compute, GPU, Scaling
 
-```yaml
-apiVersion: modal.io/v1
-kind: ModalDeployment
-metadata:
-  name: ml-training-job
-spec:
-  appName: ml-training-job
-  description: "Machine learning training with GPU"
-  source:
-    git:
-      repository: "https://github.com/your-org/ml-training"
-      path: "training/train_model.py"
-  environment:
-    name: "main"
-    variables:
-      MODEL_TYPE: "transformer"
-      BATCH_SIZE: "32"
-    secrets:
-    - name: "wandb-api-key"
-      secretRef:
-        name: "ml-secrets"
-  compute:
-    cpu: "4"
-    memory: "16Gi"
-    gpu: "A100-80GB"        # Use A100-80GB for larger models
-    gpuCount: 2             # Use 2 GPUs for training
-    timeout: 7200           # 2 hours timeout
+**Define in your Modal app file, not the CRD:**
+
+```python
+import modal
+
+app = modal.App("my-app")
+image = modal.Image.debian_slim().pip_install("torch")
+
+@app.function(
+    image=image,
+    cpu=2,                  # CPU cores
+    memory=4096,            # Memory in MB
+    gpu="A100",             # GPU type
+    timeout=3600,           # Seconds
+    concurrency_limit=10,   # Max concurrent instances
+)
+def my_function():
+    # Your code here
+    pass
 ```
 
-### High-Performance GPU Job (H100)
+See [Modal docs](https://modal.com/docs) for complete API reference.
 
-```yaml
-apiVersion: modal.io/v1
-kind: ModalDeployment
-metadata:
-  name: llm-inference
-spec:
-  appName: llm-inference
-  description: "LLM inference with H100 GPU"
-  source:
-    git:
-      repository: "https://github.com/your-org/llm-inference"
-      path: "inference/main.py"
-  compute:
-    cpu: "8"
-    memory: "64Gi"
-    gpu: "H100"             # H100 for maximum performance
-    gpuCount: 1
-    timeout: 3600
-```
+## Examples
 
-### Scheduled Data Pipeline
+```bash
+# Deploy examples
+kubectl apply -f examples/hello-world-deployment.yaml
+kubectl apply -f examples/gpu-job-deployment.yaml
+kubectl apply -f examples/fastapi-app-deployment.yaml
 
-```yaml
-apiVersion: modal.io/v1
-kind: ModalDeployment
-metadata:
-  name: daily-data-pipeline
-spec:
-  appName: daily-data-pipeline
-  description: "Daily ETL pipeline"
-  source:
-    git:
-      repository: "https://github.com/your-org/data-pipelines"
-      path: "pipelines/daily_etl.py"
-  environment:
-    name: "prod"
-    secrets:
-    - name: "aws-credentials"
-      secretRef:
-        name: "aws-secret"
-  compute:
-    cpu: "2"
-    memory: "4Gi"
-  schedule:
-    cron: "0 2 * * *"
-    timezone: "UTC"
+# Deploy all examples
+kubectl apply -f examples/
 ```
 
 ## GitOps Integration
 
-### Kustomize Support
+### ArgoCD
 
-The operator includes Kustomize support for environment-specific deployments:
-
-```bash
-# Base installation
-kubectl apply -k manifests/
-
-# Development environment (lower resources, DEBUG logging)
-kubectl apply -k kustomize/overlays/development
-
-# Production environment (HA, higher resources, INFO logging)
-kubectl apply -k kustomize/overlays/production
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: modal-deployments
+spec:
+  source:
+    repoURL: https://github.com/your-org/modal-configs
+    targetRevision: main
+    path: deployments
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
 ```
 
-The base `manifests/kustomization.yaml` includes all common resources. Overlays can customize:
-
-- Image tags and registries
-- Resource limits and requests
-- Replica counts
-- Environment variables
-- Namespace settings
-
-See [kustomize/README.md](kustomize/README.md) for more details on creating custom overlays.
-
-### ArgoCD Integration
-
-1. **Create ArgoCD Application:**
-
-   ```yaml
-   apiVersion: argoproj.io/v1alpha1
-   kind: Application
-   metadata:
-     name: modal-deployments
-   spec:
-     source:
-       repoURL: https://github.com/your-org/modal-configs
-       targetRevision: main
-       path: deployments
-     destination:
-       server: https://kubernetes.default.svc
-     syncPolicy:
-       automated:
-         prune: true
-         selfHeal: true
-   ```
-
-2. **Directory structure:**
-
-   ```
-   modal-configs/
-   ├── deployments/
-   │   ├── production/
-   │   │   ├── web-app.yaml
-   │   │   └── api-service.yaml
-   │   ├── staging/
-   │   │   ├── web-app.yaml
-   │   │   └── api-service.yaml
-   │   └── development/
-   │       └── test-function.yaml
-   ```
-
-### Flux Integration
+### Flux
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
@@ -487,203 +227,139 @@ spec:
     name: modal-configs
   path: "./deployments"
   prune: true
-  validation: client
 ```
 
-## Lifecycle Management
-
-### Create, Update, and Delete
-
-The operator supports the full lifecycle of Modal deployments:
-
-**Create:**
+### Kustomize
 
 ```bash
-kubectl apply -f deployment.yaml
+# Development environment
+kubectl apply -k kustomize/overlays/development
+
+# Production environment
+kubectl apply -k kustomize/overlays/production
 ```
 
-**Update:**
+## How It Works
 
-```bash
-# Edit the YAML and reapply, or use kubectl edit
-kubectl edit modaldeployment my-app
-kubectl apply -f updated-deployment.yaml
+> 📐 **See [ARCHITECTURE.md](ARCHITECTURE.md)** for detailed architecture diagrams, data flows, and design decisions.
+
+```
+┌─────────────────┐
+│  Kubernetes     │
+│  ModalDeployment│
+│  CRD            │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│  Modal GitOps Operator                  │
+│  ┌───────────────────────────────────┐  │
+│  │ 1. Clone Git repo                 │  │
+│  │ 2. Deploy to Modal (modal deploy) │  │
+│  │ 3. Query app ID (modal app list)  │  │
+│  │ 4. Store ID in CRD status        │  │
+│  └───────────────────────────────────┘  │
+└────────┬────────────────────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Modal Platform │
+│  - Deployed App │
+│  - App ID       │
+└─────────────────┘
 ```
 
-The operator automatically detects changes and redeploys to Modal. Modal handles versioning internally, so updates to the same app name will update the existing deployment.
+**Deployment Flow:**
 
-**Delete:**
+1. Operator watches ModalDeployment CRDs
+2. Clones your Git repository
+3. Runs `modal deploy` on your app file
+4. Queries Modal for the app ID
+5. Stores app ID in CRD status
+6. Updates status with URL and deployment info
 
-```bash
-kubectl delete modaldeployment my-app
-```
+**Deletion Flow:**
 
-The operator will:
+1. Retrieves app ID from CRD status
+2. Runs `modal app stop <app-id>`
+3. Cleans up local resources
 
-- Retrieve the Modal app ID from the CRD status (persists across operator restarts)
-- Stop the Modal app using `modal app stop`
-- Clean up local resources
-- Allow the Kubernetes resource deletion to complete
-
-## Monitoring and Observability
-
-### Status Monitoring
-
-Check deployment status:
+## Monitoring
 
 ```bash
-# List all deployments with status
+# Check deployments
 kubectl get modaldeployments
-
-# Get detailed status including Modal app ID and URL
 kubectl describe modaldeployment my-app
 
-# Watch for changes
-kubectl get modaldeployments -w
+# View operator logs
+kubectl logs -n modal-operator -l app=modal-operator -f
 
-# Check status field for Modal app information
+# Check status
 kubectl get modaldeployment my-app -o jsonpath='{.status}'
 ```
 
 **Status Fields:**
 
-- `phase`: Current phase (Deploying, Ready, Failed, Terminating)
-- `modalAppId`: Modal app identifier (stored for reliable deletion)
-- `url`: Modal app webhook URL (if webhooks enabled)
-- `lastDeployment`: Timestamp of last deployment
-- `conditions`: Detailed conditions with timestamps
-
-### Operator Logs
-
-```bash
-# View operator logs
-kubectl logs -n modal-system -l app.kubernetes.io/name=modal-operator -f
-
-# Check specific deployment events
-kubectl get events --field-selector involvedObject.name=my-app
-```
-
-### Metrics and Alerts
-
-The operator exposes Prometheus metrics on port 8080:
-
-- `modal_deployments_total` - Total number of Modal deployments
-- `modal_deployments_ready` - Number of ready deployments  
-- `modal_deployment_reconcile_duration` - Time spent reconciling deployments
-
-Example Prometheus configuration:
-
-```yaml
-- job_name: 'modal-operator'
-  kubernetes_sd_configs:
-  - role: pod
-    namespaces:
-      names: ['modal-system']
-  relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
-    action: keep
-    regex: modal-operator
-```
+- `phase` - Deploying, Ready, Failed, Terminating
+- `modalAppId` - Modal app identifier (for deletion)
+- `url` - App webhook URL (if applicable)
+- `lastDeployment` - Last deployment timestamp
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Modal credentials not found**
-
-   ```bash
-   # Set as environment variables in the operator deployment
-   kubectl create secret generic modal-credentials \
-     --namespace=modal-system \
-     --from-literal=MODAL_TOKEN_ID=YOUR_TOKEN_ID \
-     --from-literal=MODAL_TOKEN_SECRET=YOUR_TOKEN_SECRET
-   ```
-
-2. **Git repository access issues**
-   - Ensure repository is public or provide SSH keys
-   - Check network policies if using private clusters
-   - Verify git is available in the operator container
-
-3. **Modal CLI not found**
-   - Ensure Modal CLI is installed in the operator image
-   - Check operator logs for Modal CLI availability
-   - Verify `modal` command is in PATH
-
-4. **GPU configuration not applied**
-   - Verify GPU type matches supported enum values exactly (case-sensitive)
-   - Check that `gpuCount` is between 1-8
-   - Review generated Modal app script for GPU configuration
-
-5. **App deletion not working**
-   - Check that `status.modalAppId` is populated in the CRD
-   - Verify Modal CLI is accessible
-   - Check operator logs for deletion errors
-   - Note: Deletion continues even if Modal cleanup fails (non-blocking)
-
-6. **Operator pod crash loop**
-
-   ```bash
-   kubectl logs -n modal-system -l app.kubernetes.io/name=modal-operator
-   kubectl describe pod -n modal-system -l app.kubernetes.io/name=modal-operator
-   ```
-
-7. **CRD not found**
-
-   ```bash
-   kubectl apply -f crds/modaldeployment-crd.yaml
-   ```
-
-8. **Function name issues**
-   - If existing Modal apps have function names like `f`, they will be preserved
-   - New wrapped apps will use `main()` as the function name
-   - Check generated `modal_app.py` script for function definitions
-
-### Debug Commands
+**Modal credentials not found:**
 
 ```bash
-# Check operator status
-kubectl get pods -n modal-system
-kubectl describe deployment modal-operator -n modal-system
+kubectl create secret generic modal-credentials \
+  --namespace=modal-operator \
+  --from-literal=MODAL_TOKEN_ID=xxx \
+  --from-literal=MODAL_TOKEN_SECRET=yyy
+```
 
-# Validate CRD
-kubectl get crd modaldeployments.modal.io
+**Git access issues:**
 
-# Check RBAC
-kubectl auth can-i create modaldeployments --as=system:serviceaccount:modal-system:modal-operator
+- Verify repository is public or SSH key is configured
+- Check secret exists: `kubectl get secret git-ssh-credentials`
 
-# View resource status
-kubectl get modaldeployments -o wide
+**Deletion not working:**
+
+- Check `status.modalAppId` is populated: `kubectl get modaldeployment <name> -o yaml`
+- View operator logs for errors
+
+**See full logs:**
+
+```bash
+kubectl logs -n modal-operator -l app=modal-operator -f
 kubectl describe modaldeployment <name>
 ```
 
-For more advanced debugging and development troubleshooting, see [DEVELOPMENT.md](DEVELOPMENT.md#debugging).
-
 ## Development
 
-For development setup, building, testing, architecture details, and contributing guidelines, see [DEVELOPMENT.md](DEVELOPMENT.md).
+See [DEVELOPMENT.md](DEVELOPMENT.md) for:
 
-**Quick start for developers:**
+- Local development setup with kind
+- Building and testing
+- Architecture details
+- Contributing guidelines
 
-- Use [kind](https://kind.sigs.k8s.io/) for local development (recommended)
-- Run `make deploy` to build and install in one step
-- Images are automatically tagged with git commit SHA
-- See [DEVELOPMENT.md](DEVELOPMENT.md) for full development guide
+**Quick dev setup:**
 
-## Security Considerations
+```bash
+# Create kind cluster
+kind create cluster --name modal-dev
 
-- Store Modal credentials in Kubernetes secrets
-- Use RBAC to limit operator permissions
-- Run operator with non-root user
-- Enable pod security standards
-- Regularly update dependencies
+# Build and deploy
+make deploy
+
+# View logs
+kubectl logs -n modal-operator -l app=modal-operator -f
+```
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file.
 
 ## Support
 
-- Documentation: [GitHub Wiki](https://github.com/your-org/gitops-modal/wiki)
-- Issues: [GitHub Issues](https://github.com/your-org/gitops-modal/issues)
-- Discussions: [GitHub Discussions](https://github.com/your-org/gitops-modal/discussions)
-- Modal Community: [Modal Discord](https://discord.gg/modal)
+- [GitHub Issues](https://github.com/mishraprafful/gitops-modal/issues)
+- [Discussions](https://github.com/mishraprafful/gitops-modal/discussions)

@@ -3,6 +3,7 @@ name: CI
 # Required GitHub Secrets:
 #   MODAL_TOKEN_ID: Modal API token ID
 #   MODAL_TOKEN_SECRET: Modal API token secret
+#   READ_EXAMPLE_TOKEN: (Optional) GitHub Personal Access Token for private repo tests
 #
 # These secrets must be configured in GitHub repository settings:
 # Settings > Secrets and variables > Actions > New repository secret
@@ -170,7 +171,13 @@ jobs:
           MODAL_TOKEN_ID=${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET=${{ secrets.MODAL_TOKEN_SECRET }}
           EOF
-          echo "✅ Created .env file with Modal credentials"
+          # Add GITHUB_TOKEN if GH_PAT is available (for private repo tests)
+          if [ -n "${{ secrets.READ_EXAMPLE_TOKEN }}" ]; then
+            echo "GITHUB_TOKEN=${{ secrets.READ_EXAMPLE_TOKEN }}" >> .env
+            echo "✅ Created .env file with Modal and GitHub credentials"
+          else
+            echo "✅ Created .env file with Modal credentials (GH_PAT not set - private repo tests may fail)"
+          fi
 
       - name: Install operator using make install
         run: |

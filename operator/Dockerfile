@@ -24,8 +24,6 @@ COPY . .
 # Run tests to ensure code quality (fail build if tests fail)
 RUN echo "Running test_modal.py..." && \
     python test_modal.py && \
-    echo "Running test_gpu_config.py..." && \
-    python test_gpu_config.py && \
     echo "✅ All tests passed!"
 
 # Create operator user and set permissions

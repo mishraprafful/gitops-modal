@@ -36,37 +36,6 @@ def validate_modal_credentials():
     return True
 
 
-def parse_resource_requests(compute_spec):
-    """Parse compute resource specifications"""
-    resources = {}
-
-    if "cpu" in compute_spec:
-        cpu = compute_spec["cpu"]
-        if isinstance(cpu, str):
-            # Convert string CPU values to numbers
-            if "." in cpu:
-                resources["cpu"] = float(cpu)
-            else:
-                resources["cpu"] = int(cpu)
-        else:
-            resources["cpu"] = cpu
-
-    if "memory" in compute_spec:
-        memory = compute_spec["memory"]
-        if isinstance(memory, str):
-            # Parse memory strings like '512Mi', '2Gi'
-            if memory.endswith("Mi"):
-                resources["memory_mb"] = int(memory[:-2])
-            elif memory.endswith("Gi"):
-                resources["memory_mb"] = int(memory[:-2]) * 1024
-            elif memory.endswith("Ti"):
-                resources["memory_mb"] = int(memory[:-2]) * 1024 * 1024
-        else:
-            resources["memory_mb"] = memory
-
-    return resources
-
-
 def sanitize_app_name(name):
     """Sanitize application name for Modal"""
     # Modal app names should be DNS-compatible
@@ -92,17 +61,6 @@ def create_condition(condition_type, status, reason, message):
         "message": message,
         "lastTransitionTime": datetime.utcnow().isoformat() + "Z",
     }
-
-
-def is_valid_cron_expression(cron_expr):
-    """Validate cron expression"""
-    try:
-        from croniter import croniter
-
-        croniter(cron_expr)
-        return True
-    except Exception:
-        return False
 
 
 def merge_environment_variables(*env_dicts):

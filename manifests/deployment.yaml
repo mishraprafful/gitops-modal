@@ -29,7 +29,7 @@ spec:
         fsGroup: 65532
       containers:
         - name: operator
-          image: modal-operator:latest
+          image: modal-operator:26da69b5
           imagePullPolicy: IfNotPresent
           command:
             - python

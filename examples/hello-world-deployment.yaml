@@ -1,0 +1,19 @@
+apiVersion: modal.io/v1
+kind: ModalDeployment
+metadata:
+  name: hello-world
+  labels:
+    app: hello-world
+    type: function
+spec:
+  appName: hello-world
+  description: 'Hello world Modal function'
+  source:
+    git:
+      repository: 'https://github.com/modal-labs/modal-examples'
+      branch: 'main'
+      path: '01_getting_started/hello_world.py'
+  environment:
+    name: 'main'
+    variables:
+      LOG_LEVEL: 'INFO'

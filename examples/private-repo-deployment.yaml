@@ -1,0 +1,21 @@
+apiVersion: modal.io/v1
+kind: ModalDeployment
+metadata:
+  name: private-repo-app
+  labels:
+    app: private-app
+    auth-type: pat
+spec:
+  appName: private-repo-app
+  description: 'Modal app from private repository'
+  source:
+    git:
+      repository: 'https://github.com/mishraprafful/modal-examples-private.git'
+      branch: 'main'
+      path: '01_getting_started/hello_world.py'
+      credentials:
+        secretRef:
+          name: 'git-credentials'
+          namespace: 'modal-system'
+  environment:
+    name: 'main'

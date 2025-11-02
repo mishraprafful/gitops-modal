@@ -1,4 +1,5 @@
 resources:
-  - function-deployment.yaml
   - gpu-job-deployment.yaml
-  - modal-examples-hello-world.yaml
+  - hello-world-deployment.yaml
+  - flask-app-deployment.yaml
+  - private-repo-deployment.yaml
