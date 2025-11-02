@@ -1,6 +1,5 @@
 resources:
-  - function-deployment.yaml
   - gpu-job-deployment.yaml
   - hello-world-deployment.yaml
-  - fastapi-app-deployment.yaml
+  - flask-app-deployment.yaml
   - private-repo-deployment.yaml
