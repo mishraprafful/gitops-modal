@@ -568,34 +568,24 @@ Example Prometheus configuration:
    - Check operator logs for Modal CLI availability
    - Verify `modal` command is in PATH
 
-4. **GPU configuration not applied**
-   - Verify GPU type matches supported enum values exactly (case-sensitive)
-   - Check that `gpuCount` is between 1-8
-   - Review generated Modal app script for GPU configuration
-
-5. **App deletion not working**
+4. **App deletion not working**
    - Check that `status.modalAppId` is populated in the CRD
    - Verify Modal CLI is accessible
    - Check operator logs for deletion errors
    - Note: Deletion continues even if Modal cleanup fails (non-blocking)
 
-6. **Operator pod crash loop**
+5. **Operator pod crash loop**
 
    ```bash
    kubectl logs -n modal-system -l app.kubernetes.io/name=modal-operator
    kubectl describe pod -n modal-system -l app.kubernetes.io/name=modal-operator
    ```
 
-7. **CRD not found**
+6. **CRD not found**
 
    ```bash
    kubectl apply -f crds/modaldeployment-crd.yaml
    ```
-
-8. **Function name issues**
-   - If existing Modal apps have function names like `f`, they will be preserved
-   - New wrapped apps will use `main()` as the function name
-   - Check generated `modal_app.py` script for function definitions
 
 ### Debug Commands
 

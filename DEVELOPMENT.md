@@ -143,7 +143,7 @@ make help
 The build process:
 
 1. Builds Docker image with all dependencies
-2. Runs tests (`test_modal.py` and `test_gpu_config.py`) - build fails if tests fail
+2. Runs tests (`test_modal.py`) - build fails if tests fail
 3. Creates operator user with proper permissions
 4. Sets up Modal CLI environment
 5. If kind cluster detected, automatically loads image into cluster
@@ -182,7 +182,6 @@ python main.py
 Tests are automatically run during Docker build. If any test fails, the build will fail:
 
 - `test_modal.py` - Tests Modal package import and basic functionality
-- `test_gpu_config.py` - Tests GPU configuration parsing and Modal app script generation
 
 ### Manual Testing
 
@@ -207,7 +206,6 @@ kubectl delete -f examples/function-deployment.yaml
 ### Test Files
 
 - `operator/test_modal.py` - Modal package import and API tests
-- `operator/test_gpu_config.py` - GPU configuration and script generation tests
 
 ## Architecture
 
@@ -218,7 +216,7 @@ kubectl delete -f examples/function-deployment.yaml
 1. Operator watches for ModalDeployment CRDs using [Kopf](https://kopf.readthedocs.io/)
 2. On create/update:
    - Clones git repository or extracts container image
-   - Generates Modal app script with compute resources (CPU, memory, GPU)
+   - Deploys the user's Modal app file directly (as-is, without modification)
    - Runs `modal deploy` command to deploy/update the app
    - Stores Modal app ID in CRD status for reliable deletion
    - Updates CRD status with deployment results
