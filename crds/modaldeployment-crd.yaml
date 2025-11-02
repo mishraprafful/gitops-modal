@@ -53,6 +53,21 @@ spec:
                         revision:
                           type: string
                           description: 'Git commit SHA or tag'
+                        credentials:
+                          type: object
+                          description: 'Credentials for accessing private repositories'
+                          properties:
+                            secretRef:
+                              type: object
+                              required:
+                                - name
+                              properties:
+                                name:
+                                  type: string
+                                  description: 'Name of Kubernetes secret containing git credentials'
+                                namespace:
+                                  type: string
+                                  description: 'Namespace of the secret (defaults to deployment namespace)'
                     image:
                       type: object
                       required:

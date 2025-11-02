@@ -127,7 +127,22 @@ For non-kind clusters, you'll need to push your image to a container registry:
 
 ### Deploy Your First Modal App
 
-1. **Create a simple function deployment:**
+> **Important:** The operator deploys your Modal app files as-is without modification. Your app file must be a complete, valid Modal application with proper imports, app definition, and decorators. See [Modal's documentation](https://modal.com/docs) for examples of valid Modal apps.
+
+1. **Create your Modal app file** (`hello_world.py`):
+
+   ```python
+   import modal
+
+   app = modal.App("hello-world-function")
+
+   @app.function()
+   def hello():
+       print("Hello from Modal!")
+       return "Hello World"
+   ```
+
+2. **Create the deployment manifest:**
 
    ```yaml
    apiVersion: modal.io/v1
@@ -141,28 +156,27 @@ For non-kind clusters, you'll need to push your image to a container registry:
        git:
          repository: "https://github.com/your-org/modal-apps"
          branch: "main"
-         path: "functions/hello_world.py"
+         path: "hello_world.py"  # Your complete Modal app file
      environment:
        name: "main"
-     compute:
-       cpu: "0.25"
-       memory: "512Mi"
    ```
 
-2. **Apply the deployment:**
+   **Note:** Compute resources (CPU, memory, GPU), scaling, webhooks, and schedules should be defined in your Modal app file using Modal's Python API, not in the CRD spec.
+
+3. **Apply the deployment:**
 
    ```bash
    kubectl apply -f your-deployment.yaml
    ```
 
-3. **Check status:**
+4. **Check status:**
 
    ```bash
    kubectl get modaldeployment hello-world
    kubectl describe modaldeployment hello-world
    ```
 
-4. **Update the deployment:**
+5. **Update the deployment:**
 
    ```bash
    # Edit the YAML file and reapply
@@ -171,7 +185,7 @@ For non-kind clusters, you'll need to push your image to a container registry:
    kubectl apply -f your-deployment.yaml
    ```
 
-5. **Delete the deployment:**
+6. **Delete the deployment:**
 
    ```bash
    kubectl delete modaldeployment hello-world
@@ -182,17 +196,14 @@ For non-kind clusters, you'll need to push your image to a container registry:
 
 ### ModalDeployment Spec
 
+The CRD spec contains only source and environment configuration. All compute resources, scaling, webhooks, and schedules should be defined in your Modal app file.
+
 | Field         | Type   | Description                           | Required |
 | ------------- | ------ | ------------------------------------- | -------- |
 | `appName`     | string | Name of the Modal application         | ✅        |
 | `description` | string | Description of the application        | ❌        |
 | `source`      | object | Source configuration (git or image)   | ✅        |
 | `environment` | object | Environment and secrets configuration | ❌        |
-| `compute`     | object | CPU, memory, GPU configuration        | ❌        |
-| `scaling`     | object | Auto-scaling parameters               | ❌        |
-| `schedule`    | object | Cron schedule for scheduled functions | ❌        |
-| `webhooks`    | object | Webhook configuration for web apps    | ❌        |
-| `deployment`  | object | Deployment strategy and health checks | ❌        |
 
 ### Source Configuration
 
@@ -206,6 +217,62 @@ source:
     path: "path/to/app.py"      # Path to Modal app file
     revision: "commit-sha"      # Optional, specific commit
 ```
+
+#### Private Git Repositories
+
+The operator supports authentication to private repositories using SSH keys or Personal Access Tokens.
+
+**Using SSH Keys:**
+
+```yaml
+source:
+  git:
+    repository: "git@github.com:your-org/private-repo.git"
+    branch: "main"
+    path: "app.py"
+    credentials:
+      secretRef:
+        name: "git-ssh-credentials"
+        namespace: "default"  # Optional, defaults to deployment namespace
+```
+
+Create the SSH key secret:
+
+```bash
+# Generate SSH key
+ssh-keygen -t ed25519 -C "deploy@example.com" -f ~/.ssh/modal_deploy_key
+
+# Add public key to GitHub/GitLab (contents of ~/.ssh/modal_deploy_key.pub)
+
+# Create Kubernetes secret
+kubectl create secret generic git-ssh-credentials \
+  --from-file=ssh-privatekey=$HOME/.ssh/modal_deploy_key
+```
+
+**Using Personal Access Token:**
+
+```yaml
+source:
+  git:
+    repository: "https://github.com/your-org/private-repo.git"
+    branch: "main"
+    path: "app.py"
+    credentials:
+      secretRef:
+        name: "git-pat-credentials"
+```
+
+Create the PAT secret:
+
+```bash
+# Get token from GitHub: Settings > Developer settings > Personal access tokens
+# Required scopes: repo (full control of private repositories)
+
+kubectl create secret generic git-pat-credentials \
+  --from-literal=token=ghp_your_token_here
+```
+
+See `examples/private-repo-example.yaml` for complete examples.
 
 #### Container Image Source
 
@@ -240,174 +307,66 @@ environment:
       namespace: "default"      # Optional, defaults to resource namespace
 ```
 
-### Compute Configuration
+### Compute, Scaling, and Other Configurations
 
-```yaml
-compute:
-  cpu: "1"                      # CPU allocation (cores)
-  memory: "2Gi"                 # Memory allocation (e.g., "512Mi", "1Gi", "2Ti")
-  gpu: "A100"                   # GPU type (see supported types below)
-  gpuCount: 2                   # Number of GPUs (1-8)
-  timeout: 300                  # Function timeout in seconds (1-86400)
+> **Important:** The operator deploys Modal apps as-is without modification. All compute resources (CPU, memory, GPU), scaling parameters, webhooks, and schedules should be defined in your Modal app file using Modal's Python API, not in the CRD spec.
+
+**Define these in your Modal app:**
+
+- **Compute:** CPU, memory, GPU, timeout → Use `@app.function()` decorator parameters
+- **Scaling:** minInstances, maxInstances, concurrency → Use function decorator options
+- **Webhooks:** Web endpoints → Use `@modal.web_endpoint()` or `@modal.asgi_app()`
+- **Schedules:** Cron jobs → Use `schedule=modal.Cron()` parameter
+
+**Example Modal app structure:**
+
+```python
+import modal
+
+app = modal.App("my-app")
+image = modal.Image.debian_slim().pip_install("fastapi")
+
+@app.function(
+    image=image,
+    cpu=2,                    # CPU cores
+    memory=4096,              # Memory in MB
+    gpu="A100",               # GPU type
+    timeout=3600,             # Timeout in seconds
+    concurrency_limit=10,     # Scaling
+)
+@modal.asgi_app()
+def web():
+    from fastapi import FastAPI
+    app = FastAPI()
+    return app
 ```
 
-**Supported GPU Types:**
-
-- `T4` - NVIDIA T4 GPU
-- `L4` - NVIDIA L4 GPU
-- `A10` - NVIDIA A10 GPU
-- `A100` - NVIDIA A100 GPU
-- `A100-40GB` - NVIDIA A100 GPU (40GB memory)
-- `A100-80GB` - NVIDIA A100 GPU (80GB memory)
-- `L40S` - NVIDIA L40S GPU
-- `H100/H100!` - NVIDIA H100 GPU
-- `H200` - NVIDIA H200 GPU
-- `B200` - NVIDIA B200 GPU
-
-### Scaling Configuration
-
-```yaml
-scaling:
-  minInstances: 0               # Minimum instances (0 for serverless)
-  maxInstances: 50              # Maximum instances
-  concurrency: 10               # Requests per instance
-  idleTimeout: 300              # Idle timeout before scale down
-```
-
-### Schedule Configuration
-
-```yaml
-schedule:
-  cron: "0 2 * * *"            # Cron expression (daily at 2 AM)
-  timezone: "UTC"               # Timezone
-```
-
-### Webhook Configuration
-
-```yaml
-webhooks:
-  enabled: true
-  path: "/"                     # Webhook path
-  methods: ["GET", "POST"]      # HTTP methods
-```
+See [Modal's documentation](https://modal.com/docs) for complete API reference.
 
 ## Examples
 
-### Web Application (FastAPI)
+The `examples/` directory contains ready-to-use ModalDeployment manifests:
 
-```yaml
-apiVersion: modal.io/v1
-kind: ModalDeployment
-metadata:
-  name: fastapi-web-app
-spec:
-  appName: fastapi-web-app
-  description: "FastAPI web application"
-  source:
-    git:
-      repository: "https://github.com/your-org/modal-apps"
-      path: "web/fastapi_app.py"
-  environment:
-    name: "prod"
-    variables:
-      DATABASE_URL: "postgresql://..."
-    secrets:
-    - name: "db-credentials"
-      secretRef:
-        name: "database-secret"
-  compute:
-    cpu: "1"
-    memory: "1Gi"
-  scaling:
-    minInstances: 2
-    maxInstances: 50
-    concurrency: 10
-  webhooks:
-    enabled: true
-    path: "/"
-    methods: ["GET", "POST", "PUT", "DELETE"]
+- **`hello-world-deployment.yaml`** - Simple hello world function
+- **`function-deployment.yaml`** - Basic Modal function deployment
+- **`gpu-job-deployment.yaml`** - GPU-accelerated ML workload (Stable Diffusion)
+- **`fastapi-app-deployment.yaml`** - Flask web application with webhooks
+- **`private-repo-example.yaml`** - Authentication for private repositories (SSH & PAT)
+
+**Quick start:**
+
+```bash
+# Deploy an example
+kubectl apply -f examples/hello-world-deployment.yaml
+
+# Deploy all examples
+kubectl apply -f examples/
+
+# Or use Kustomize
+kubectl apply -k examples/
 ```
 
-### GPU ML Training Job
-
-```yaml
-apiVersion: modal.io/v1
-kind: ModalDeployment
-metadata:
-  name: ml-training-job
-spec:
-  appName: ml-training-job
-  description: "Machine learning training with GPU"
-  source:
-    git:
-      repository: "https://github.com/your-org/ml-training"
-      path: "training/train_model.py"
-  environment:
-    name: "main"
-    variables:
-      MODEL_TYPE: "transformer"
-      BATCH_SIZE: "32"
-    secrets:
-    - name: "wandb-api-key"
-      secretRef:
-        name: "ml-secrets"
-  compute:
-    cpu: "4"
-    memory: "16Gi"
-    gpu: "A100-80GB"        # Use A100-80GB for larger models
-    gpuCount: 2             # Use 2 GPUs for training
-    timeout: 7200           # 2 hours timeout
-```
-
-### High-Performance GPU Job (H100)
-
-```yaml
-apiVersion: modal.io/v1
-kind: ModalDeployment
-metadata:
-  name: llm-inference
-spec:
-  appName: llm-inference
-  description: "LLM inference with H100 GPU"
-  source:
-    git:
-      repository: "https://github.com/your-org/llm-inference"
-      path: "inference/main.py"
-  compute:
-    cpu: "8"
-    memory: "64Gi"
-    gpu: "H100"             # H100 for maximum performance
-    gpuCount: 1
-    timeout: 3600
-```
-
-### Scheduled Data Pipeline
-
-```yaml
-apiVersion: modal.io/v1
-kind: ModalDeployment
-metadata:
-  name: daily-data-pipeline
-spec:
-  appName: daily-data-pipeline
-  description: "Daily ETL pipeline"
-  source:
-    git:
-      repository: "https://github.com/your-org/data-pipelines"
-      path: "pipelines/daily_etl.py"
-  environment:
-    name: "prod"
-    secrets:
-    - name: "aws-credentials"
-      secretRef:
-        name: "aws-secret"
-  compute:
-    cpu: "2"
-    memory: "4Gi"
-  schedule:
-    cron: "0 2 * * *"
-    timezone: "UTC"
-```
+See the [examples directory](examples/) for complete, working examples you can deploy immediately.
 
 ## GitOps Integration
 

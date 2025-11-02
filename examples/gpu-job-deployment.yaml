@@ -1,35 +1,19 @@
 apiVersion: modal.io/v1
 kind: ModalDeployment
 metadata:
-  name: modal-gpu-hello-world
+  name: gpu-stable-diffusion
   labels:
-    app: hello-gpu-world
-    type: function
+    app: stable-diffusion
+    type: gpu-job
 spec:
-  appName: modal-gpu-hello-world
-  description: 'Hello world Modal function using public repository'
+  appName: gpu-stable-diffusion
+  description: 'Stable Diffusion GPU job'
   source:
-    # Using Modal's official examples repository
     git:
       repository: 'https://github.com/modal-labs/modal-examples'
       branch: 'main'
-      path: '01_getting_started/hello_world.py'
+      path: '06_gpu_and_ml/stable_diffusion/stable_diffusion_xl_turbo.py'
   environment:
     name: 'main'
     variables:
-      LOG_LEVEL: 'INFO'
-  compute:
-    cpu: '0.25'
-    memory: '512Mi'
-    gpu: 'A100'
-    gpuCount: 2
-    timeout: 7200 # 2 hours
-  scaling:
-    minInstances: 0
-    maxInstances: 1
-    concurrency: 1
-  deployment:
-    strategy: 'replace'
-    healthCheck:
-      enabled: true
-      timeout: 30
+      MODEL_NAME: 'stabilityai/sdxl-turbo'

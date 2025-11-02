@@ -1,13 +1,13 @@
 apiVersion: modal.io/v1
 kind: ModalDeployment
 metadata:
-  name: hello-world-function
+  name: hello-world
   labels:
     app: hello-world
     type: function
 spec:
-  appName: hello-world-function
-  description: 'A simple hello world Modal function'
+  appName: hello-world
+  description: 'Hello world Modal function'
   source:
     git:
       repository: 'https://github.com/modal-labs/modal-examples'
@@ -17,4 +17,3 @@ spec:
     name: 'main'
     variables:
       LOG_LEVEL: 'INFO'
-      GREETING: 'Hello from GitOps!'

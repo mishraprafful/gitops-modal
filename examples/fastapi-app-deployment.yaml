@@ -1,20 +1,21 @@
 apiVersion: modal.io/v1
 kind: ModalDeployment
 metadata:
-  name: hello-world-function
+  name: flask-web-app
   labels:
-    app: hello-world
-    type: function
+    app: web-app
+    type: web-service
+    framework: flask
 spec:
-  appName: hello-world-function
-  description: 'A simple hello world Modal function'
+  appName: flask-web-app
+  description: 'Flask web application'
   source:
     git:
       repository: 'https://github.com/modal-labs/modal-examples'
       branch: 'main'
-      path: '01_getting_started/hello_world.py'
+      path: '07_web_endpoints/flask_app.py'
   environment:
     name: 'main'
     variables:
       LOG_LEVEL: 'INFO'
-      GREETING: 'Hello from GitOps!'
+      ENVIRONMENT: 'production'

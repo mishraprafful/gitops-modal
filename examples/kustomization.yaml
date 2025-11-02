@@ -1,4 +1,6 @@
 resources:
   - function-deployment.yaml
   - gpu-job-deployment.yaml
-  - modal-examples-hello-world.yaml
+  - hello-world-deployment.yaml
+  - fastapi-app-deployment.yaml
+  # private-repo-example.yaml is documentation-only, not deployable as-is
