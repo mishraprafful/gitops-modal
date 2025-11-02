@@ -4,18 +4,34 @@ First off, thank you for considering contributing to the Modal GitOps Operator! 
 
 ## Table of Contents
 
-- [Code of Conduct](#code-of-conduct)
-- [How Can I Contribute?](#how-can-i-contribute)
-  - [Reporting Bugs](#reporting-bugs)
-  - [Suggesting Features](#suggesting-features)
-  - [Improving Documentation](#improving-documentation)
-  - [Contributing Code](#contributing-code)
-- [Development Setup](#development-setup)
-- [Pull Request Process](#pull-request-process)
-- [Coding Guidelines](#coding-guidelines)
-- [Testing Guidelines](#testing-guidelines)
-- [Commit Message Guidelines](#commit-message-guidelines)
-- [Community](#community)
+- [Contributing to Modal GitOps Operator](#contributing-to-modal-gitops-operator)
+  - [Table of Contents](#table-of-contents)
+  - [Code of Conduct](#code-of-conduct)
+  - [How Can I Contribute?](#how-can-i-contribute)
+    - [Reporting Bugs](#reporting-bugs)
+    - [Suggesting Features](#suggesting-features)
+    - [Improving Documentation](#improving-documentation)
+    - [Contributing Code](#contributing-code)
+  - [Development Setup](#development-setup)
+  - [Pull Request Process](#pull-request-process)
+  - [Coding Guidelines](#coding-guidelines)
+    - [Python Code Style](#python-code-style)
+    - [YAML Style](#yaml-style)
+    - [Git Practices](#git-practices)
+  - [Testing Guidelines](#testing-guidelines)
+    - [Required Tests](#required-tests)
+    - [Running Tests](#running-tests)
+    - [Test Coverage](#test-coverage)
+  - [Commit Message Guidelines](#commit-message-guidelines)
+    - [Format](#format)
+    - [Types](#types)
+    - [Examples](#examples)
+    - [Rules](#rules)
+  - [Community](#community)
+    - [Getting Help](#getting-help)
+    - [Staying Updated](#staying-updated)
+    - [Recognition](#recognition)
+  - [Questions?](#questions)
 
 ## Code of Conduct
 
@@ -119,9 +135,9 @@ make deploy
    kubectl apply -f examples/function-deployment.yaml
    ```
 
-4. **Update CHANGES.md**:
+4. **Update CHANGELOG.md**:
    - Add a brief description of your changes under "Unreleased"
-   - Follow the existing format
+   - Follow the Keep a Changelog format used in the repository
 
 5. **Submit the PR**:
    - Fill out the pull request template completely
@@ -194,20 +210,17 @@ def deploy_modal_app(deployment: ModalDeployment, namespace: str) -> DeploymentS
 
 ### Running Tests
 
-```bash
-# Run Python tests
-cd operator
-python -m pytest
+NOTE: Assuming you have a kind cluster running.
 
-# Test in kind cluster
+```bash
+
+# Test in kind cluster and apply examples
 make deploy
-kubectl apply -f examples/
-kubectl get modaldeployments
+make test-examples
 ```
 
 ### Test Coverage
 
-- Aim for **>80% code coverage** for new code
 - Test both **success and failure** cases
 - Test **edge cases** and error handling
 
@@ -271,15 +284,12 @@ docs: update installation guide for kind clusters
 
 ### Getting Help
 
-- **GitHub Discussions**: Ask questions, share ideas
 - **GitHub Issues**: Report bugs, request features
-- **Modal Discord**: Platform-specific questions
 
 ### Staying Updated
 
 - **Watch** the repository for notifications
 - **Star** the project to show support
-- Check **GitHub Discussions** for announcements
 
 ### Recognition
 
