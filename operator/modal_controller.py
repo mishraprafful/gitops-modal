@@ -511,6 +511,10 @@ class ModalController:
             if not actual_app_name:
                 actual_app_name = config.get("app_name", name)
 
+            # Wait a moment for the app to fully register in Modal's system
+            logger.info(f"Waiting for app '{actual_app_name}' to register in Modal...")
+            await asyncio.sleep(2)
+
             # Query Modal to get the actual app ID for the deployed app
             logger.info(f"Querying Modal to get app ID for '{actual_app_name}'...")
             actual_app_id = await self._get_app_id_by_name(actual_app_name)
