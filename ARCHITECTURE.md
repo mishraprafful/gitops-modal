@@ -303,10 +303,5 @@ graph LR
   - Watch for git commit changes
   - Configurable polling interval
   - Track git revision in CRD status
-- [ ] Prometheus metrics exposure
-- [ ] Webhook validation for CRDs
-- [ ] Multi-region Modal support
-- [ ] Advanced scheduling strategies
-- [ ] Built-in retry mechanisms with exponential backoff
-- [ ] Support for Modal volume mounts
-- [ ] Integration with external secret managers (Vault, AWS Secrets Manager)
+- [ ] Prometheus metrics exposure - [Issue #7](https://github.com/mishraprafful/gitops-modal/issues/7)
+- [ ] Webhook validation for CRDs - [Issue #8](https://github.com/mishraprafful/gitops-modal/issues/8)

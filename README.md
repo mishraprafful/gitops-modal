@@ -191,14 +191,6 @@ kubectl apply -f examples/fastapi-app-deployment.yaml
 kubectl apply -f examples/
 ```
 
-Available examples:
-
-- `hello-world-deployment.yaml` - Simple function
-- `function-deployment.yaml` - Basic deployment
-- `gpu-job-deployment.yaml` - GPU workload (Stable Diffusion)
-- `fastapi-app-deployment.yaml` - Web app
-- `private-repo-deployment.yaml` - Private repo access
-
 ## GitOps Integration
 
 ### ArgoCD
