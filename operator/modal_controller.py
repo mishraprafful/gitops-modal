@@ -76,16 +76,14 @@ class ModalController:
         return await self.deploy_to_modal(spec, name, namespace)
 
     async def delete_from_modal(self, spec: Dict[str, Any], name: str, namespace: str):
-        """Delete a Modal deployment"""
+        """Delete a Modal deployment using the app ID"""
         logger.info(f"Deleting {name} from Modal")
 
-        # Try to get Modal app ID/name from multiple sources
         modal_app_id = None
-        modal_app_name = spec.get("appName", name)
         source_path = None
 
         try:
-            # First, try to get app ID from CRD status (persists across restarts)
+            # Strategy 1: Get app ID from CRD status (if it was stored)
             try:
                 resource = self.custom_objects_api.get_namespaced_custom_object(
                     group="modal.io",
@@ -105,9 +103,9 @@ class ModalController:
                 else:
                     logger.warning(f"Failed to retrieve CRD status: {e}")
 
-            # Fall back to in-memory tracking if available
+            # Strategy 2: Fall back to in-memory tracking if available
+            key = f"{namespace}/{name}"
             if not modal_app_id:
-                key = f"{namespace}/{name}"
                 if key in self.deployed_apps:
                     app_info = self.deployed_apps[key]
                     modal_app_id = app_info.get("app_id")
@@ -116,22 +114,60 @@ class ModalController:
                         f"Found Modal app ID from in-memory tracking: {modal_app_id}"
                     )
 
-            # Use app name as fallback identifier
-            app_identifier = modal_app_id or modal_app_name
-            logger.info(f"Deleting Modal app using identifier: {app_identifier}")
+            # Strategy 3: Query Modal to find the app by name (last resort)
+            if not modal_app_id:
+                logger.info(
+                    "No stored app ID found, querying Modal API to find the app..."
+                )
 
-            # Stop/delete the Modal app
-            await self._stop_modal_app(app_identifier)
+                # Determine the app name to search for
+                app_name_to_find = spec.get("appName", name)
+
+                # Try to get the actual app name from source file if available
+                if key in self.deployed_apps:
+                    source_path = self.deployed_apps[key].get("source_path")
+
+                if source_path and os.path.exists(source_path):
+                    try:
+                        extracted_name = self._extract_app_name_from_source(source_path)
+                        if extracted_name:
+                            app_name_to_find = extracted_name
+                            logger.info(
+                                f"Using extracted app name for search: {extracted_name}"
+                            )
+                    except Exception as e:
+                        logger.debug(f"Could not extract app name from source: {e}")
+
+                # Use the helper method to find app ID by name
+                modal_app_id = await self._get_app_id_by_name(app_name_to_find)
+
+                if modal_app_id:
+                    logger.info(
+                        f"Found app ID from Modal API: {modal_app_id} "
+                        f"(app name: {app_name_to_find})"
+                    )
+
+            # Execute deletion if we have an app ID
+            if not modal_app_id:
+                logger.warning(
+                    f"No app ID found for {namespace}/{name} (searched for app name: {app_name_to_find if 'app_name_to_find' in locals() else 'N/A'}). "
+                    "App may have never been deployed successfully or was already deleted."
+                )
+            else:
+                logger.info(f"Deleting Modal app with ID: {modal_app_id}")
+                await self._stop_modal_app(modal_app_id)
 
             # Clean up local resources
+            if not source_path and key in self.deployed_apps:
+                source_path = self.deployed_apps[key].get("source_path")
+
             if source_path and os.path.exists(source_path):
                 import shutil
 
                 shutil.rmtree(source_path, ignore_errors=True)
                 logger.info(f"Cleaned up local resources at {source_path}")
 
-            # Remove from in-memory tracking if present
-            key = f"{namespace}/{name}"
+            # Remove from in-memory tracking
             if key in self.deployed_apps:
                 del self.deployed_apps[key]
 
@@ -458,30 +494,102 @@ class ModalController:
             # Parse deployment result from Modal CLI output
             output_text = stdout.decode("utf-8") if stdout else ""
 
+            import re
+
+            # Extract app name from the source file for reference
+            actual_app_name = None
+            try:
+                actual_app_name = self._extract_app_name_from_source(source_path)
+                if actual_app_name:
+                    logger.info(
+                        f"Extracted app name from source file: {actual_app_name}"
+                    )
+            except Exception as e:
+                logger.debug(f"Could not extract app name from source: {e}")
+
+            # If still no app name, use config as fallback
+            if not actual_app_name:
+                actual_app_name = config.get("app_name", name)
+
+            # Query Modal to get the actual app ID for the deployed app
+            logger.info(f"Querying Modal to get app ID for '{actual_app_name}'...")
+            actual_app_id = await self._get_app_id_by_name(actual_app_name)
+
+            if actual_app_id:
+                logger.info(f"Successfully retrieved app ID: {actual_app_id}")
+            else:
+                logger.warning(
+                    f"Could not retrieve app ID for '{actual_app_name}'. "
+                    "Deletion will query Modal API to find the app."
+                )
+
             result = {
-                "app_id": config.get("app_name", name),
+                "app_id": actual_app_id,  # Real app ID from Modal
+                "app_name": actual_app_name,  # For reference
                 "url": None,
             }
 
             # Try to extract URL from Modal deploy output
             if output_text:
-                import re
-
                 url_pattern = r"https://[^\s]+\.modal\.run[^\s]*"
                 urls = re.findall(url_pattern, output_text)
                 if urls:
                     result["url"] = urls[0]
 
             logger.info(f"Modal deployment successful for {name}")
+            logger.info(f"  App ID: {actual_app_id or 'not retrieved'}")
+            logger.info(f"  App Name: {actual_app_name}")
+            logger.info(f"  URL: {result.get('url') or 'none'}")
+
             return result
 
         except Exception as e:
             logger.error(f"Modal deployment failed for {name}: {e}")
             raise
 
-    async def _stop_modal_app(self, app_identifier: str):
-        """Stop a Modal application using Modal CLI"""
-        logger.info(f"Stopping Modal app {app_identifier}")
+    def _extract_app_name_from_source(self, source_path: str) -> Optional[str]:
+        """Extract the actual app name from a Modal Python source file
+
+        Looks for patterns like:
+        - app = modal.App("app-name")
+        - app = App("app-name")
+        - modal.App("app-name")
+        """
+        try:
+            with open(source_path, "r") as f:
+                content = f.read()
+
+            import re
+
+            # Common patterns for Modal app definition
+            patterns = [
+                r'modal\.App\([\'"]([a-zA-Z0-9_-]+)[\'"]\)',  # modal.App("name")
+                r'App\([\'"]([a-zA-Z0-9_-]+)[\'"]\)',  # App("name")
+                r'=\s*modal\.App\([\'"]([a-zA-Z0-9_-]+)[\'"]\)',  # var = modal.App("name")
+                r'=\s*App\([\'"]([a-zA-Z0-9_-]+)[\'"]\)',  # var = App("name")
+            ]
+
+            for pattern in patterns:
+                match = re.search(pattern, content)
+                if match:
+                    app_name = match.group(1)
+                    logger.info(f"Extracted app name from source file: {app_name}")
+                    return app_name
+
+            logger.warning(f"Could not find app name pattern in {source_path}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error reading source file {source_path}: {e}")
+            return None
+
+    async def _stop_modal_app(self, app_id: str):
+        """Stop a Modal application using its app ID
+
+        Args:
+            app_id: Modal app ID (format: ap-xxxxx)
+        """
+        logger.info(f"Stopping Modal app with ID: {app_id}")
 
         try:
             # Check if Modal CLI is available
@@ -501,9 +609,8 @@ class ModalController:
                 logger.warning("Modal CLI not available, skipping app stop")
                 return
 
-            # Use modal app stop command to stop/deactivate the app
-            # Modal apps can be stopped which effectively deactivates them
-            cmd = ["modal", "app", "stop", app_identifier]
+            # Use modal app stop command with the app ID
+            cmd = ["modal", "app", "stop", app_id]
             logger.info(f"Running command: {' '.join(cmd)}")
 
             process = await asyncio.create_subprocess_exec(
@@ -517,38 +624,189 @@ class ModalController:
 
             if stdout:
                 logger.info(f"Modal stop stdout: {stdout.decode('utf-8')}")
-            if stderr:
-                stderr_text = stderr.decode("utf-8")
-                # Check if app doesn't exist (expected case)
-                if (
-                    "not found" in stderr_text.lower()
-                    or "does not exist" in stderr_text.lower()
-                ):
-                    logger.info(
-                        f"Modal app {app_identifier} not found, may already be deleted"
-                    )
-                    return
-                else:
-                    logger.warning(f"Modal stop stderr: {stderr_text}")
+
+            stderr_text = stderr.decode("utf-8") if stderr else ""
 
             if returncode == 0:
-                logger.info(f"Successfully stopped Modal app {app_identifier}")
+                logger.info(f"Successfully stopped Modal app {app_id}")
+                return
+
+            # Check if app doesn't exist (already deleted)
+            if (
+                "not found" in stderr_text.lower()
+                or "does not exist" in stderr_text.lower()
+                or "could not find" in stderr_text.lower()
+            ):
+                logger.info(
+                    f"Modal app '{app_id}' not found. "
+                    "The app may have already been deleted or never deployed successfully."
+                )
+                return
             else:
-                # Non-zero return code - check if it's because app doesn't exist
-                error_msg = stderr.decode("utf-8") if stderr else "Unknown error"
-                if (
-                    "not found" in error_msg.lower()
-                    or "does not exist" in error_msg.lower()
-                ):
-                    logger.info(
-                        f"Modal app {app_identifier} not found, may already be deleted"
-                    )
-                else:
-                    logger.warning(
-                        f"Modal app stop returned non-zero exit code {returncode}: {error_msg}"
-                    )
+                # Some other error occurred
+                logger.warning(f"Modal stop stderr: {stderr_text}")
+                logger.warning(
+                    f"Modal app stop returned non-zero exit code {returncode}: {stderr_text}"
+                )
 
         except Exception as e:
             # Log error but don't fail - app may already be deleted
-            logger.warning(f"Error stopping Modal app {app_identifier}: {e}")
+            logger.warning(f"Error stopping Modal app {app_id}: {e}")
             logger.info("Continuing with deletion process")
+
+    async def _get_app_id_by_name(self, app_name: str) -> Optional[str]:
+        """Get the app ID for a deployed app by its name
+
+        Args:
+            app_name: The app name to search for
+
+        Returns:
+            The app ID (e.g., 'ap-xxxxx') if found, None otherwise
+        """
+        try:
+            deployed_apps = await self._list_deployed_apps()
+
+            # Try exact match first
+            for app in deployed_apps:
+                if app.get("name") == app_name:
+                    return app.get("id")
+
+            # Try case-insensitive match
+            for app in deployed_apps:
+                if app.get("name", "").lower() == app_name.lower():
+                    return app.get("id")
+
+            logger.warning(f"Could not find app ID for app name: {app_name}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting app ID by name: {e}")
+            return None
+
+    async def _list_deployed_apps(self) -> List[Dict[str, str]]:
+        """List all currently deployed Modal apps with their IDs using JSON output
+
+        Returns a list of dicts with 'id' and 'name' keys.
+        Example: [{'id': 'ap-xxxxx', 'name': 'my-app'}, ...]
+        """
+        try:
+            cmd = ["modal", "app", "list", "--json"]
+            logger.info(f"Running command: {' '.join(cmd)}")
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await process.communicate()
+
+            if process.returncode != 0:
+                stderr_text = stderr.decode("utf-8") if stderr else "No error output"
+                logger.warning(
+                    f"Failed to list apps (exit code {process.returncode}): {stderr_text}"
+                )
+                return []
+
+            # Parse JSON output
+            import json
+
+            output_text = stdout.decode("utf-8")
+            # Always log the raw output at INFO level when listing apps for deletion
+            logger.info("Raw output from 'modal app list --json':")
+            logger.info(output_text if output_text else "(empty)")
+            logger.debug(f"Modal app list output: {output_text}")
+
+            try:
+                apps_data = json.loads(output_text)
+
+                # Handle different possible JSON structures
+                apps = []
+
+                # If it's a list of app objects
+                if isinstance(apps_data, list):
+                    for app in apps_data:
+                        if isinstance(app, dict):
+                            # Try different possible field names for ID and name
+                            # Modal uses "App ID" and "Description" with capitals and spaces
+                            app_id = (
+                                app.get("App ID")
+                                or app.get("id")
+                                or app.get("app_id")
+                                or app.get("appId")
+                            )
+                            app_name = (
+                                app.get("Description")
+                                or app.get("description")
+                                or app.get("name")
+                                or app.get("app_name")
+                                or app.get("appName")
+                            )
+
+                            # Filter by state - only include deployed apps
+                            state = app.get("State", "").lower()
+
+                            if app_id and state == "deployed":
+                                apps.append({"id": app_id, "name": app_name or app_id})
+
+                # If it's a dict with an 'apps' key
+                elif isinstance(apps_data, dict) and "apps" in apps_data:
+                    for app in apps_data["apps"]:
+                        if isinstance(app, dict):
+                            app_id = (
+                                app.get("App ID")
+                                or app.get("id")
+                                or app.get("app_id")
+                                or app.get("appId")
+                            )
+                            app_name = (
+                                app.get("Description")
+                                or app.get("description")
+                                or app.get("name")
+                                or app.get("app_name")
+                                or app.get("appName")
+                            )
+
+                            # Filter by state - only include deployed apps
+                            state = app.get("State", "").lower()
+
+                            if app_id and state == "deployed":
+                                apps.append({"id": app_id, "name": app_name or app_id})
+
+                logger.info(f"Found {len(apps)} deployed apps via Modal API")
+                if apps:
+                    logger.debug(f"Apps: {apps}")
+
+                return apps
+
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse JSON from modal app list: {e}")
+                logger.debug(f"Raw output: {output_text}")
+
+                # Fallback: try to parse as plain text (one app per line)
+                logger.info("Attempting to parse output as plain text...")
+                apps = []
+                for line in output_text.split("\n"):
+                    line = line.strip()
+                    if (
+                        line
+                        and not line.startswith("#")
+                        and "App" not in line
+                        and "---" not in line
+                    ):
+                        parts = line.split()
+                        if parts:
+                            # Assume first column is app ID or name
+                            apps.append(
+                                {
+                                    "id": parts[0],
+                                    "name": parts[1] if len(parts) > 1 else parts[0],
+                                }
+                            )
+
+                logger.info(f"Parsed {len(apps)} apps from plain text output")
+                return apps
+
+        except Exception as e:
+            logger.warning(f"Error listing deployed apps: {e}")
+            return []
