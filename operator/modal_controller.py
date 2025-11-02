@@ -498,14 +498,19 @@ class ModalController:
 
             # Extract app name from the source file for reference
             actual_app_name = None
+            logger.info(f"Attempting to extract app name from: {source_path}")
             try:
                 actual_app_name = self._extract_app_name_from_source(source_path)
                 if actual_app_name:
                     logger.info(
-                        f"Extracted app name from source file: {actual_app_name}"
+                        f"Successfully extracted app name from source: {actual_app_name}"
+                    )
+                else:
+                    logger.warning(
+                        f"Could not extract app name from source file: {source_path}"
                     )
             except Exception as e:
-                logger.debug(f"Could not extract app name from source: {e}")
+                logger.warning(f"Error extracting app name from source: {e}")
 
             # If still no app name, use config as fallback
             if not actual_app_name:
@@ -554,10 +559,7 @@ class ModalController:
     def _extract_app_name_from_source(self, source_path: str) -> Optional[str]:
         """Extract the actual app name from a Modal Python source file
 
-        Looks for patterns like:
-        - app = modal.App("app-name")
-        - app = App("app-name")
-        - modal.App("app-name")
+        Looks for modal.App("app-name") or App("app-name") and extracts the string.
         """
         try:
             with open(source_path, "r") as f:
@@ -565,22 +567,17 @@ class ModalController:
 
             import re
 
-            # Common patterns for Modal app definition
-            patterns = [
-                r'modal\.App\([\'"]([a-zA-Z0-9_-]+)[\'"]\)',  # modal.App("name")
-                r'App\([\'"]([a-zA-Z0-9_-]+)[\'"]\)',  # App("name")
-                r'=\s*modal\.App\([\'"]([a-zA-Z0-9_-]+)[\'"]\)',  # var = modal.App("name")
-                r'=\s*App\([\'"]([a-zA-Z0-9_-]+)[\'"]\)',  # var = App("name")
-            ]
+            # Simple: find modal.App( or App( and grab the quoted string after it
+            # Match either single or double quotes
+            pattern = r'(?:modal\.)?App\s*\(\s*["\']([^"\']+)["\']'
 
-            for pattern in patterns:
-                match = re.search(pattern, content)
-                if match:
-                    app_name = match.group(1)
-                    logger.info(f"Extracted app name from source file: {app_name}")
-                    return app_name
+            match = re.search(pattern, content)
+            if match:
+                app_name = match.group(1)
+                logger.info(f"Extracted app name: {app_name}")
+                return app_name
 
-            logger.warning(f"Could not find app name pattern in {source_path}")
+            logger.warning(f"Could not find App(...) pattern in {source_path}")
             return None
 
         except Exception as e:
