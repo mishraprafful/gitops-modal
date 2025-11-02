@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/mishraprafful/gitops-modal/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 📚 Documentation
+    url: https://github.com/mishraprafful/gitops-modal/blob/main/README.md
+    about: Read the documentation for guides and references
+  - name: 🎓 Modal Documentation
+    url: https://modal.com/docs
+    about: Learn more about Modal platform
+  - name: 💬 Modal Discord
+    url: https://discord.gg/modal
+    about: Join the Modal community for platform-specific questions
