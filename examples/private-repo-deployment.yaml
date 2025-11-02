@@ -1,0 +1,20 @@
+apiVersion: modal.io/v1
+kind: ModalDeployment
+metadata:
+  name: private-repo-app
+  labels:
+    app: private-app
+    auth-type: pat
+spec:
+  appName: private-repo-app
+  description: 'Modal app from private repository'
+  source:
+    git:
+      repository: 'https://github.com/YOUR-ORG/your-private-repo.git'
+      branch: 'main'
+      path: 'app.py'
+      credentials:
+        secretRef:
+          name: 'git-credentials'
+  environment:
+    name: 'main'

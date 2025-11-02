@@ -351,7 +351,8 @@ The `examples/` directory contains ready-to-use ModalDeployment manifests:
 - **`function-deployment.yaml`** - Basic Modal function deployment
 - **`gpu-job-deployment.yaml`** - GPU-accelerated ML workload (Stable Diffusion)
 - **`fastapi-app-deployment.yaml`** - Flask web application with webhooks
-- **`private-repo-example.yaml`** - Authentication for private repositories (SSH & PAT)
+- **`private-repo-deployment.yaml`** - Deploy from private repository (requires credentials)
+- **`private-repo-example.yaml`** - Detailed documentation for SSH & PAT authentication
 
 **Quick start:**
 
