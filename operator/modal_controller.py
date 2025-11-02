@@ -712,9 +712,6 @@ class ModalController:
             import json
 
             output_text = stdout.decode("utf-8")
-            # Always log the raw output at INFO level when listing apps for deletion
-            logger.info("Raw output from 'modal app list --json':")
-            logger.info(output_text if output_text else "(empty)")
             logger.debug(f"Modal app list output: {output_text}")
 
             try:
@@ -774,8 +771,6 @@ class ModalController:
                                 apps.append({"id": app_id, "name": app_name or app_id})
 
                 logger.info(f"Found {len(apps)} deployed apps via Modal API")
-                if apps:
-                    logger.debug(f"Apps: {apps}")
 
                 return apps
 
