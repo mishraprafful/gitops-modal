@@ -12,7 +12,7 @@ spec:
     git:
       repository: 'https://github.com/modal-labs/modal-examples'
       branch: 'main'
-      path: '06_gpu_and_ml/stable_diffusion/stable_diffusion_xl_turbo.py'
+      path: '06_gpu_and_ml/stable_diffusion/text_to_image.py'
   environment:
     name: 'main'
     variables:
