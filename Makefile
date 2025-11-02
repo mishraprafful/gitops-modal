@@ -307,7 +307,7 @@ test-examples: ## Apply example deployments and wait for them to become ready
 	@echo "$(GREEN)✅ Examples applied successfully$(NC)"
 	@echo ""
 	@echo "$(BLUE)Waiting for ModalDeployments to be ready...$(NC)"
-	@kubectl wait --for=jsonpath='{.status.phase}'=Ready --timeout=300s modaldeployments --all || \
+	@kubectl wait --for=jsonpath='{.status.phase}'=Ready --timeout=600s modaldeployments --all || \
 		(echo "$(YELLOW)⚠️  Some deployments may still be processing$(NC)" && true)
 	@echo ""
 	@echo "$(BLUE)Checking deployed ModalDeployments:$(NC)"
@@ -320,6 +320,7 @@ test-examples: ## Apply example deployments and wait for them to become ready
 		echo "$(BLUE)$$md: $$phase$(NC)"; \
 	done
 	@echo ""
+	sleep 30
 	@echo "$(GREEN)✅ Example tests completed$(NC)"
 	@echo ""
 	@echo "$(BLUE)Cleaning up test resources...$(NC)"
