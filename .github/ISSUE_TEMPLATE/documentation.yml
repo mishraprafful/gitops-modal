@@ -1,0 +1,107 @@
+name: Documentation Improvement
+description: Suggest improvements to documentation
+title: "[Docs]: "
+labels: ["documentation", "triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us improve our documentation!
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation needs improvement?
+      options:
+        - README.md
+        - DEVELOPMENT.md
+        - API Reference / CRD Docs
+        - Examples
+        - Installation Guide
+        - Troubleshooting Guide
+        - Architecture / Design Docs
+        - Code Comments
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: Issue with Current Documentation
+      description: What's wrong or missing in the current documentation?
+      placeholder: |
+        The current documentation doesn't explain...
+        There's a typo in...
+        The example is outdated...
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: Where is the documentation that needs improvement?
+      placeholder: "e.g., README.md line 123, examples/gpu-job-deployment.yaml"
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: How should the documentation be improved?
+      placeholder: |
+        It would be clearer if...
+        We should add a section about...
+        The example should show...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-content
+    attributes:
+      label: Proposed Content
+      description: If applicable, provide the proposed documentation content
+      placeholder: Write the improved documentation here
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Impact
+      description: How much does this affect users?
+      options:
+        - Critical - Causes confusion or errors
+        - High - Significantly improves clarity
+        - Medium - Helpful improvement
+        - Low - Minor enhancement
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Are you willing to help?
+      options:
+        - label: I am willing to submit a PR with the documentation improvements
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other information about the documentation improvement
+      placeholder: Screenshots, related issues, etc.
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Pre-submission Checklist
+      description: Please verify the following before submitting
+      options:
+        - label: I have checked that this documentation issue doesn't already exist
+          required: true
+        - label: I have provided a clear description of the improvement
+          required: true
