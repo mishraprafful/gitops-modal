@@ -86,11 +86,17 @@ async def create_modal_deployment(
             phase="Deploying",
             conditions=[
                 {
-                    "type": "Deploying",
+                    "type": "Reconciling",
                     "status": "True",
                     "reason": "DeploymentStarted",
                     "message": "Starting Modal deployment",
-                }
+                },
+                {
+                    "type": "Ready",
+                    "status": "False",
+                    "reason": "Deploying",
+                    "message": "Deployment in progress",
+                },
             ],
         )
 
@@ -106,11 +112,23 @@ async def create_modal_deployment(
             url=result.get("url"),
             conditions=[
                 {
+                    "type": "Reconciling",
+                    "status": "False",
+                    "reason": "DeploymentSuccessful",
+                    "message": "Deployment completed",
+                },
+                {
                     "type": "Ready",
                     "status": "True",
                     "reason": "DeploymentSuccessful",
                     "message": "Modal deployment completed successfully",
-                }
+                },
+                {
+                    "type": "Available",
+                    "status": "True",
+                    "reason": "DeploymentSuccessful",
+                    "message": "Modal app is deployed and available",
+                },
             ],
         )
 
@@ -130,11 +148,23 @@ async def create_modal_deployment(
             phase="Failed",
             conditions=[
                 {
-                    "type": "Failed",
+                    "type": "Reconciling",
+                    "status": "False",
+                    "reason": "DeploymentFailed",
+                    "message": "Deployment attempt completed with failure",
+                },
+                {
+                    "type": "Ready",
+                    "status": "False",
+                    "reason": "DeploymentFailed",
+                    "message": f"Modal deployment failed: {str(e)}",
+                },
+                {
+                    "type": "Stalled",
                     "status": "True",
                     "reason": "DeploymentFailed",
                     "message": f"Modal deployment failed: {str(e)}",
-                }
+                },
             ],
         )
 
@@ -156,11 +186,17 @@ async def update_modal_deployment(
             phase="Deploying",
             conditions=[
                 {
-                    "type": "Deploying",
+                    "type": "Reconciling",
                     "status": "True",
                     "reason": "UpdateStarted",
                     "message": "Starting Modal deployment update",
-                }
+                },
+                {
+                    "type": "Ready",
+                    "status": "False",
+                    "reason": "Updating",
+                    "message": "Update in progress",
+                },
             ],
         )
 
@@ -176,11 +212,23 @@ async def update_modal_deployment(
             url=result.get("url"),
             conditions=[
                 {
+                    "type": "Reconciling",
+                    "status": "False",
+                    "reason": "UpdateSuccessful",
+                    "message": "Update completed",
+                },
+                {
                     "type": "Ready",
                     "status": "True",
                     "reason": "UpdateSuccessful",
                     "message": "Modal deployment updated successfully",
-                }
+                },
+                {
+                    "type": "Available",
+                    "status": "True",
+                    "reason": "UpdateSuccessful",
+                    "message": "Modal app is deployed and available",
+                },
             ],
         )
 
@@ -200,11 +248,23 @@ async def update_modal_deployment(
             phase="Failed",
             conditions=[
                 {
-                    "type": "Failed",
+                    "type": "Reconciling",
+                    "status": "False",
+                    "reason": "UpdateFailed",
+                    "message": "Update attempt completed with failure",
+                },
+                {
+                    "type": "Ready",
+                    "status": "False",
+                    "reason": "UpdateFailed",
+                    "message": f"Modal deployment update failed: {str(e)}",
+                },
+                {
+                    "type": "Stalled",
                     "status": "True",
                     "reason": "UpdateFailed",
                     "message": f"Modal deployment update failed: {str(e)}",
-                }
+                },
             ],
         )
 
@@ -227,11 +287,17 @@ async def delete_modal_deployment(
             phase="Terminating",
             conditions=[
                 {
-                    "type": "Terminating",
+                    "type": "Reconciling",
                     "status": "True",
                     "reason": "DeletionStarted",
                     "message": "Starting Modal deployment deletion",
-                }
+                },
+                {
+                    "type": "Ready",
+                    "status": "False",
+                    "reason": "Terminating",
+                    "message": "Resource is being deleted",
+                },
             ],
         )
     except Exception as status_error:
@@ -252,6 +318,87 @@ async def delete_modal_deployment(
         logger.error(f"Error during Modal app deletion for {namespace}/{name}: {e}")
         logger.warning("Continuing with resource deletion despite Modal cleanup error")
         return {"message": "Deployment deletion completed with warnings"}
+
+
+@kopf.on.timer("modal.io", "v1", "modaldeployments", interval=120.0)
+async def monitor_modal_health(
+    spec: Dict[str, Any], name: str, namespace: str, status: Dict[str, Any], **kwargs
+):
+    """Check Modal app health every 120 seconds"""
+    logger.info(f"Health check for {namespace}/{name}")
+
+    # Skip if not yet deployed or already failed/terminating
+    current_phase = status.get("phase") if status else None
+    if not current_phase or current_phase not in ["Ready", "Deploying"]:
+        logger.debug(
+            f"Skipping health check for {namespace}/{name} - phase is {current_phase}"
+        )
+        return
+
+    modal_app_id = status.get("modalAppId") if status else None
+    app_name = spec.get("appName", name)
+
+    # Check if app exists in Modal
+    is_healthy = await controller.check_app_health(modal_app_id, app_name)
+
+    if is_healthy:
+        # Only update if status needs to change
+        if current_phase != "Ready":
+            await controller.update_status(
+                name=name,
+                namespace=namespace,
+                phase="Ready",
+                conditions=[
+                    {
+                        "type": "Available",
+                        "status": "True",
+                        "reason": "AppHealthy",
+                        "message": "Modal app is deployed and available",
+                    },
+                    {
+                        "type": "Ready",
+                        "status": "True",
+                        "reason": "Reconciled",
+                        "message": "Resource reconciled successfully",
+                    },
+                    {
+                        "type": "Stalled",
+                        "status": "False",
+                        "reason": "AppHealthy",
+                        "message": "App is healthy",
+                    },
+                ],
+            )
+        logger.debug(f"Health check passed for {namespace}/{name}")
+    else:
+        logger.warning(
+            f"Health check failed for {namespace}/{name} - app not found in Modal"
+        )
+        await controller.update_status(
+            name=name,
+            namespace=namespace,
+            phase="Failed",
+            conditions=[
+                {
+                    "type": "Available",
+                    "status": "False",
+                    "reason": "AppNotFound",
+                    "message": f"Modal app {app_name} not found in deployed apps",
+                },
+                {
+                    "type": "Ready",
+                    "status": "False",
+                    "reason": "AppMissing",
+                    "message": "App may have been deleted outside of operator",
+                },
+                {
+                    "type": "Stalled",
+                    "status": "True",
+                    "reason": "AppMissing",
+                    "message": "App may have been deleted outside of operator",
+                },
+            ],
+        )
 
 
 @kopf.on.startup()

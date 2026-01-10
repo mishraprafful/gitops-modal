@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "WebSearch",
+      "WebFetch(domain:argo-cd.readthedocs.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:modal.com)",
+      "Bash(make lint:*)"
+    ]
+  }
+}

@@ -41,7 +41,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
-.PHONY: help build deploy install uninstall test clean update-image load-kind check-kind lint test-examples
+.PHONY: help build deploy install uninstall test clean update-image load-kind check-kind lint test-examples install-argocd-config
 
 help: ## Show this help message
 	@echo "$(BLUE)Modal GitOps Operator Makefile$(NC)"
@@ -68,7 +68,7 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / && ($$1 == "build" || $$1 == "deploy" || $$1 == "install" || $$1 == "uninstall" || $$1 == "update-image" || $$1 == "load-kind") {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(BLUE)Develop Commands:$(NC)"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / && ($$1 == "lint" || $$1 == "test" || $$1 == "test-examples") {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / && ($$1 == "lint" || $$1 == "test" || $$1 == "test-examples" || $$1 == "install-argocd-config") {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(BLUE)Utility Commands:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / && ($$1 == "check-kind" || $$1 == "clean" || $$1 == "help") {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
@@ -326,6 +326,24 @@ test-examples: ## Apply example deployments and wait for them to become ready
 	@echo "$(BLUE)Cleaning up test resources...$(NC)"
 	@kubectl delete -f /tmp/examples-built.yaml --ignore-not-found=true || true
 	@echo "$(GREEN)✅ Test resources cleaned up$(NC)"
+
+install-argocd-config: ## Install ArgoCD health check configuration for ModalDeployment
+	@echo "$(BLUE)Installing ArgoCD health check configuration...$(NC)"
+	@if ! command -v kubectl > /dev/null; then \
+		echo "$(RED)✗ Error: kubectl is required but not installed$(NC)"; \
+		exit 1; \
+	fi
+	@if ! kubectl get namespace argocd > /dev/null 2>&1; then \
+		echo "$(YELLOW)⚠ ArgoCD namespace not found. Is ArgoCD installed?$(NC)"; \
+		echo "$(BLUE)   Install ArgoCD: kubectl create namespace argocd && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Applying ArgoCD health check ConfigMap...$(NC)"
+	@kubectl apply -f manifests/argocd-health-check.yaml
+	@echo "$(GREEN)✅ ArgoCD health check configuration installed$(NC)"
+	@echo ""
+	@echo "$(BLUE)Note: You may need to restart argocd-server for changes to take effect:$(NC)"
+	@echo "   kubectl rollout restart deployment argocd-server -n argocd"
 
 # ============================================================================
 # Utility Commands

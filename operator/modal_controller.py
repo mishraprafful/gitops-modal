@@ -207,6 +207,11 @@ class ModalController:
                 datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             )
 
+            # Set observedGeneration for ArgoCD compatibility
+            resource["status"]["observedGeneration"] = resource["metadata"].get(
+                "generation", 1
+            )
+
             if modal_app_id:
                 resource["status"]["modalAppId"] = modal_app_id
 
@@ -683,6 +688,42 @@ class ModalController:
         except Exception as e:
             logger.error(f"Error getting app ID by name: {e}")
             return None
+
+    async def check_app_health(self, app_id: Optional[str], app_name: str) -> bool:
+        """Check if a Modal app exists and is healthy
+
+        Args:
+            app_id: Modal app ID (ap-xxxxx) if known
+            app_name: App name to search for
+
+        Returns:
+            True if app is deployed and healthy, False otherwise
+        """
+        try:
+            deployed_apps = await self._list_deployed_apps()
+
+            # Check by ID first (most reliable)
+            if app_id:
+                for app in deployed_apps:
+                    if app.get("id") == app_id:
+                        logger.debug(f"App {app_id} found and healthy")
+                        return True
+
+            # Fall back to name match
+            for app in deployed_apps:
+                if (
+                    app.get("name") == app_name
+                    or app.get("name", "").lower() == app_name.lower()
+                ):
+                    logger.debug(f"App {app_name} found and healthy")
+                    return True
+
+            logger.warning(f"App not found: id={app_id}, name={app_name}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Error checking app health: {e}")
+            return False  # Assume unhealthy on error
 
     async def _list_deployed_apps(self) -> List[Dict[str, str]]:
         """List all currently deployed Modal apps with their IDs using JSON output

@@ -132,7 +132,7 @@ spec:
                   enum: ['Pending', 'Deploying', 'Ready', 'Failed', 'Terminating']
                 conditions:
                   type: array
-                  description: 'List of conditions'
+                  description: 'List of conditions for ArgoCD health checks'
                   items:
                     type: object
                     required:
@@ -141,7 +141,12 @@ spec:
                     properties:
                       type:
                         type: string
-                        description: 'Type of condition'
+                        description: 'Type of condition (ArgoCD compatible)'
+                        enum:
+                          - 'Ready'
+                          - 'Reconciling'
+                          - 'Stalled'
+                          - 'Available'
                       status:
                         type: string
                         description: 'Status of condition'
