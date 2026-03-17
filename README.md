@@ -257,7 +257,7 @@ kubectl apply -k kustomize/overlays/production
 │  │ 1. Clone Git repo                 │  │
 │  │ 2. Deploy to Modal (modal deploy) │  │
 │  │ 3. Query app ID (modal app list)  │  │
-│  │ 4. Store ID in CRD status        │  │
+│  │ 4. Store ID in CRD status         │  │
 │  └───────────────────────────────────┘  │
 └────────┬────────────────────────────────┘
          │
